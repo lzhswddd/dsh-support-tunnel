@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Support tunnel",
+    "description": "Keeps every customer machine reachable behind one inbound HTTPS port: each kit holds a single reverse tunnel, the Host opens its own loopback port per kit, and ssh/scp ride inside it. Includes kit listing, remote command execution with a dangerous-command guard, file transfer, audit log and forced disconnect.",
+    "detail": "docs/DETAIL.md"
+  }
+}

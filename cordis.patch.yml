@@ -1,0 +1,10 @@
+﻿- insert:
+    - id: support-tunnel
+      name: '@local/support-tunnel'
+      config:
+        port: 24443
+        host: 0.0.0.0
+        basePort: 40001
+        maxClients: 25
+        tls: true
+        kitsDir: 'D:/ai/bmc-control/remote-support/kits'
