@@ -1,9 +1,35 @@
 {
   "name": "@local/support-tunnel",
-  "version": "1.1.0",
-  "private": true,
+  "version": "1.2.0",
   "type": "module",
-  "description": "HTTP/HTTPS reverse tunnel that keeps customer machines reachable on one inbound port.",
+  "description": "Control-side DSH plugin for a reverse tunnel: reach customer machines on customer networks through one inbound port, with per-account approval, SSH, file transfer, key/mouse control and VNC.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "reverse-tunnel",
+    "remote-support",
+    "ssh",
+    "vnc",
+    "novnc"
+  ],
+  "author": {
+    "name": "lzhswddd"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lzhswddd/dsh-support-tunnel.git"
+  },
+  "homepage": "https://github.com/lzhswddd/dsh-support-tunnel#readme",
+  "bugs": {
+    "url": "https://github.com/lzhswddd/dsh-support-tunnel/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -19,6 +45,7 @@
     "locale/*.json",
     "docs",
     "README.md",
+    "LICENSE",
     "icon.svg"
   ],
   "dsh": {
