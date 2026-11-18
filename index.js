@@ -48,6 +48,13 @@ export function normalizeConfig(config) {
     // Where the standalone tunnel server's admin API answers. TUNNEL_SERVER_URL
     // wins so a machine can be repointed without editing the patch.
     remoteUrl: text(process.env.TUNNEL_SERVER_URL) || text(raw.remoteUrl, 'http://127.0.0.1:24444'),
+    // Required when the admin API is bound beyond loopback (a control side on
+    // another machine). Ignored for loopback callers, so local installs need
+    // no extra configuration.
+    remoteToken: text(process.env.TUNNEL_API_TOKEN) || text(raw.remoteToken),
+    // sha256 fingerprint of the server certificate. Needed only when remoteUrl
+    // is https with a self-signed cert — the tunnel listener's own certificate.
+    remoteFingerprint: text(process.env.TUNNEL_SERVER_FINGERPRINT) || text(raw.remoteFingerprint),
     remoteTimeoutMs: positiveInt(raw.remoteTimeoutMs, 8000),
     // A stick can own several kits (a Windows kit and a Linux kit issued
     // separately). Array or "a,b,c". Empty = show every kit the server knows,
@@ -104,6 +111,8 @@ export function apply(ctx, config) {
     baseUrl: settings.remoteUrl,
     timeoutMs: settings.remoteTimeoutMs,
     kitFilter: settings.kitId,
+    apiToken: settings.remoteToken,
+    fingerprint: settings.remoteFingerprint,
     onLog: log,
   })
   let stopped = false
