@@ -6,10 +6,17 @@
         # separate process — see ../tunnel-server/README.md.
         remoteUrl: 'http://127.0.0.1:24444'
         remoteTimeoutMs: 8000
-        # One stick may own several kits: the Windows one and the Linux one
-        # were issued separately. List them comma separated (or as a YAML
-        # array). Machines that connect with either kit appear as devices.
-        kitId: 'k5a1dad4e,k8f8fe16a'
+        # Which kits this control side may see.
+        #
+        # Left empty on purpose: the plugin now reads the DSH account it is
+        # signed in as (deepseekAccount) and sends it to the server, which
+        # returns only the kits owned by that account. Any other computer
+        # signed in with the same account therefore sees exactly the same
+        # devices, with no per-machine kit configuration.
+        #
+        # Set a comma separated list here (for example 'k5a1dad4e,k8f8fe16a')
+        # only when you want to narrow it further on this machine.
+        kitId: ''
         # Fallback login account when a client reports a machine account
         # (NAME$), e.g. when its agent was started by a SYSTEM task.
         clientUser: 'lzh'

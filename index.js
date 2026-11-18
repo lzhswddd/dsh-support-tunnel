@@ -120,6 +120,34 @@ export function apply(ctx, config) {
 
   log(`control side: server ${settings.remoteUrl}, kit ${settings.kitId || '(all)'}`)
 
+  // Identify the DSH account this Host is signed in as, and hand it to the
+  // backend. The tunnel server keeps kits per account, so another computer
+  // signed in with the same account sees exactly the same devices without any
+  // local kit configuration. Everything here is optional: a missing service or
+  // a signed-out account simply leaves the account filter empty.
+  if (typeof ctx.get === 'function' && ctx.get('deepseekAccount')) {
+    const accountService = ctx.get('deepseekAccount')
+    const resolveAccount = async () => {
+      try {
+        const identity = await accountService.getDeviceIdentity()
+        if (identity?.userId) return String(identity.userId)
+      } catch { /* fall through to the profile read */ }
+      try {
+        const profile = await accountService.getProfile({
+          version: '1', locale: 'zh', timezoneOffsetSeconds: 0,
+        })
+        if (profile?.status === 'ready' && profile.value?.id) return String(profile.value.id)
+      } catch { /* stay anonymous */ }
+      return ''
+    }
+    resolveAccount().then((id) => {
+      if (stopped) return
+      backend.setAccount(id)
+      log(id ? `account: ${id.slice(0, 8)}… (kits scoped to this account)` : 'account: not signed in (kits unscoped)')
+      backend.refresh().catch(() => {})
+    }).catch(() => {})
+  }
+
   ctx.effect(() => {
     backend.refresh()
       .then((snapshot) => {
