@@ -11,11 +11,16 @@
         # so the sha256 fingerprint is pinned instead.
         remoteUrl: 'https://127.0.0.1:24444'
         remoteTimeoutMs: 8000
-        # Only needed when the admin API is bound beyond loopback, i.e. when this
-        # machine is not the tunnel server. Deliberately empty here: a committed
-        # token would be published with the repository. Set it in the profile
-        # patch (`~/.dsh/profiles/<profile>/cordis.patch.yml`, not versioned) or
-        # export TUNNEL_API_TOKEN instead.
+        # Login password for this machine's DSH account, set by the operator when
+        # the account was approved (the server shows it once). Required whenever
+        # remoteUrl points at another machine; a loopback server needs nothing
+        # because callers on the server itself are trusted.
+        # Never commit a real value: put it in the profile patch
+        # (`~/.dsh/profiles/<profile>/cordis.patch.yml`, not versioned) or export
+        # TUNNEL_ACCOUNT_PASSWORD.
+        accountPassword: ''
+        # Optional operator credential for the server's management routes. Not
+        # needed by a control side, which authenticates with its account.
         remoteToken: ''
         remoteFingerprint: 'sha256:eY2bT4vockxqUTwQEwayqN3VvEuTC8EPIz0aUvHTe8Y'
         # Which kits this control side may see.

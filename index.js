@@ -55,6 +55,10 @@ export function normalizeConfig(config) {
     // sha256 fingerprint of the server certificate. Needed only when remoteUrl
     // is https with a self-signed cert — the tunnel listener's own certificate.
     remoteFingerprint: text(process.env.TUNNEL_SERVER_FINGERPRINT) || text(raw.remoteFingerprint),
+    // Password of this control side's DSH account, set by the operator when the
+    // account was approved. Enables login-based access; without it the plugin
+    // can only talk to a loopback server.
+    accountPassword: text(process.env.TUNNEL_ACCOUNT_PASSWORD) || text(raw.accountPassword),
     remoteTimeoutMs: positiveInt(raw.remoteTimeoutMs, 8000),
     // A stick can own several kits (a Windows kit and a Linux kit issued
     // separately). Array or "a,b,c". Empty = show every kit the server knows,
@@ -112,6 +116,7 @@ export function apply(ctx, config) {
     timeoutMs: settings.remoteTimeoutMs,
     kitFilter: settings.kitId,
     apiToken: settings.remoteToken,
+    accountPassword: settings.accountPassword,
     fingerprint: settings.remoteFingerprint,
     onLog: log,
   })
