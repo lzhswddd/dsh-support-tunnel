@@ -4,15 +4,23 @@
       config:
         # This plugin is the control side only. The tunnel endpoint runs as a
         # separate process — see ../tunnel-server/README.md.
-        remoteUrl: 'http://127.0.0.1:24444'
+        #
+        # The admin API has its own port (24444), separate from the tunnel
+        # listener (24443), and serves https with the tunnel's certificate.
+        # Over the internet the certificate cannot be verified by a public CA,
+        # so the sha256 fingerprint is pinned instead.
+        remoteUrl: 'https://127.0.0.1:24444'
         remoteTimeoutMs: 8000
+        # Only needed when the admin API is bound beyond loopback; a loopback
+        # caller is trusted. Kept here so the same file works on any machine.
+        remoteToken: ''
+        remoteFingerprint: 'sha256:eY2bT4vockxqUTwQEwayqN3VvEuTC8EPIz0aUvHTe8Y'
         # Which kits this control side may see.
         #
-        # Left empty on purpose: the plugin now reads the DSH account it is
-        # signed in as (deepseekAccount) and sends it to the server, which
-        # returns only the kits owned by that account. Any other computer
-        # signed in with the same account therefore sees exactly the same
-        # devices, with no per-machine kit configuration.
+        # Left empty on purpose: the plugin reads the DSH account it is signed in
+        # as (deepseekAccount) and sends it to the server, which returns only the
+        # kits owned by that account. Any other computer signed in with the same
+        # account therefore sees exactly the same devices.
         #
         # Set a comma separated list here (for example 'k5a1dad4e,k8f8fe16a')
         # only when you want to narrow it further on this machine.
