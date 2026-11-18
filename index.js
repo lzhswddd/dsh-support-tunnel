@@ -207,7 +207,16 @@ export function apply(ctx, config) {
   }, 'support-tunnel.remote()')
 
   // Browser VNC client so the operator does not need a viewer installed.
-  const novnc = createNoVncProxy({ port: settings.novncPort, onLog: log })
+  // One table shared by the bridge and the routes: a route registers a virtual
+  // port for each remote viewer, and the bridge looks that port up when the
+  // browser asks for /ws/<port>. Without it a control side dials its own
+  // loopback and fails, because the kit's port only exists on the server.
+  const remoteVnc = new Map()
+  const novnc = createNoVncProxy({
+    port: settings.novncPort,
+    onLog: log,
+    resolveRemote: (port) => remoteVnc.get(port),
+  })
   ctx.effect(() => {
     let closed = false
     novnc.start().then((result) => {
@@ -225,7 +234,7 @@ export function apply(ctx, config) {
   // headless profile has no webServer, and the tunnel tools still work there.
   ctx.inject(['webServer'], (webCtx) => {
     if (stopped) return
-    return registerUiRoutes(webCtx, backend, settings, vnc)
+    return registerUiRoutes(webCtx, backend, settings, vnc, remoteVnc)
   })
 
   registerTools(ctx, backend, settings, vnc)
