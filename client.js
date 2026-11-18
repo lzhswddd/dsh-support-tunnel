@@ -301,19 +301,46 @@ window.__ModuleLoader__.load({
                   h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
                   h('span', { style: { ...S.hint, flex: 1 } }, '离线'))];
               }
-              // One row per machine, so "远程查看" always names a single session.
-              return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceRow },
-                h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-success-primary)' } }),
-                h('span', { style: S.deviceName, title: device.name }, session.clientHost || device.name),
-                h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
-                h('span', { style: { ...S.hint, flex: 1, wordBreak: 'break-all' } },
-                  `${session.user || ''}　:${session.localPort}`),
-                h('button', {
-                  style: { ...S.ghost, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-                  disabled: vncBusy === session.sessionKey,
-                  onClick: () => remoteView(session.sessionKey, session.clientHost || device.name),
-                }, vncBusy === session.sessionKey ? '开启中…' : '远程查看')));
-            })),
+                // One row per machine, so the switch always names a single session.
+                // Its state comes from the server (state.vncSessions), not from local
+                // bookkeeping: closing the tab does not end a viewer, and a switch
+                // reading "on" while the server has nothing open is worse than none.
+                return device.sessions.map((session) => {
+                  const live = (vncList || []).find((entry) => entry.kitId === device.kitId)
+                  const active = Boolean(live)
+                  const busy = vncBusy === session.sessionKey
+                  return h('div', { key: session.sessionKey, style: S.deviceRow },
+                    h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-success-primary)' } }),
+                    h('span', { style: S.deviceName, title: device.name }, session.clientHost || device.name),
+                    h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
+                    h('span', { style: { ...S.hint, flex: 1, wordBreak: 'break-all' } },
+                      `${session.user || ''} :${session.localPort}`),
+                    active && live && live.webUrl
+                      ? h('button', {
+                        style: { ...S.ghost, padding: '4px 10px', fontSize: 12, cursor: 'pointer', marginRight: 6 },
+                        onClick: () => { window.open(live.webUrl, '_blank', 'width=1400,height=900') },
+                      }, '打开画面')
+                      : null,
+                    h('button', {
+                      style: {
+                        ...S.ghost,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        color: active ? 'var(--dsw-alias-state-error-primary)' : undefined,
+                        borderColor: active ? 'var(--dsw-alias-state-error-primary)' : undefined,
+                      },
+                      disabled: busy,
+                      onClick: () => remoteView(
+                        session.sessionKey,
+                        session.clientHost || device.name,
+                        active ? 'stop' : 'start',
+                      ),
+                    }, busy
+                      ? (active ? '关闭中…' : '开启中…')
+                      : (active ? '关闭远程' : '远程查看')))
+                });
+              })),
           vncNotice
             ? h('div', {
               style: {

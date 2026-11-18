@@ -59,6 +59,11 @@ export function normalizeConfig(config) {
     // account was approved. Enables login-based access; without it the plugin
     // can only talk to a loopback server.
     accountPassword: text(process.env.TUNNEL_ACCOUNT_PASSWORD) || text(raw.accountPassword),
+    // Account id to act as. Normally derived from this machine's DSH sign-in,
+    // but a control side that is not signed in has no identity to offer, and the
+    // server scopes kits per account. The password above is the credential; this
+    // is the name it belongs to. Stated here it takes precedence.
+    account: text(process.env.TUNNEL_ACCOUNT) || text(raw.account),
     // Where this machine keeps the kits it is allowed to ssh with. The server
     // reports an absolute operator-key path that only exists on the server, so a
     // remote control side resolves it here instead.
@@ -144,6 +149,14 @@ export function apply(ctx, config) {
   // signed in with the same account sees exactly the same devices without any
   // local kit configuration. Everything here is optional: a missing service or
   // a signed-out account simply leaves the account filter empty.
+  // A stated account wins: this control side may not be signed in to DSH
+  // at all, and then there is no identity to derive so every request is refused.
+  if (settings.account) {
+    backend.setAccount(settings.account)
+    log(`account: ${String(settings.account).slice(0, 8)}… (configured)`)
+    backend.refresh().catch(() => {})
+  }
+
   if (typeof ctx.get === 'function' && ctx.get('deepseekAccount')) {
     const accountService = ctx.get('deepseekAccount')
     const resolveAccount = async () => {
@@ -183,6 +196,7 @@ export function apply(ctx, config) {
     platformToken().catch(() => {})
     resolveAccount().then((id) => {
       if (stopped) return
+      if (!id && settings.account) return
       backend.setAccount(id)
       log(id ? `account: ${id.slice(0, 8)}… (kits scoped to this account)` : 'account: not signed in (kits unscoped)')
       backend.refresh().catch(() => {})
