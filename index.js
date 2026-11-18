@@ -59,6 +59,10 @@ export function normalizeConfig(config) {
     // account was approved. Enables login-based access; without it the plugin
     // can only talk to a loopback server.
     accountPassword: text(process.env.TUNNEL_ACCOUNT_PASSWORD) || text(raw.accountPassword),
+    // Where this machine keeps the kits it is allowed to ssh with. The server
+    // reports an absolute operator-key path that only exists on the server, so a
+    // remote control side resolves it here instead.
+    kitsDir: text(process.env.TUNNEL_KITS_DIR) || text(raw.kitsDir),
     remoteTimeoutMs: positiveInt(raw.remoteTimeoutMs, 8000),
     // A stick can own several kits (a Windows kit and a Linux kit issued
     // separately). Array or "a,b,c". Empty = show every kit the server knows,
@@ -118,6 +122,7 @@ export function apply(ctx, config) {
     apiToken: settings.remoteToken,
     accountPassword: settings.accountPassword,
     fingerprint: settings.remoteFingerprint,
+    kitsDir: settings.kitsDir,
     onLog: log,
   })
   let stopped = false
