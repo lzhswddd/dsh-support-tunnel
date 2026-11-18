@@ -1,10 +1,19 @@
-﻿- insert:
+- insert:
     - id: support-tunnel
       name: '@local/support-tunnel'
       config:
-        port: 24443
-        host: 0.0.0.0
-        basePort: 40001
-        maxClients: 25
-        tls: true
-        kitsDir: 'D:/ai/bmc-control/remote-support/kits'
+        # This plugin is the control side only. The tunnel endpoint runs as a
+        # separate process — see ../tunnel-server/README.md.
+        remoteUrl: 'http://127.0.0.1:24444'
+        remoteTimeoutMs: 8000
+        # One stick may own several kits: the Windows one and the Linux one
+        # were issued separately. List them comma separated (or as a YAML
+        # array). Machines that connect with either kit appear as devices.
+        kitId: 'k5a1dad4e,k8f8fe16a'
+        # Fallback login account when a client reports a machine account
+        # (NAME$), e.g. when its agent was started by a SYSTEM task.
+        clientUser: 'lzh'
+        # VNC password configured on the customer machines; noVNC fills it in
+        # automatically so 「远程查看」 is a single click. A per-machine value
+        # set via tunnel_vnc action=password takes precedence.
+        vncPassword: 'dsh2026'

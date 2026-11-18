@@ -86,6 +86,16 @@ window.__ModuleLoader__.load({
         wordBreak: 'break-all',
       },
       dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 6 },
+      deviceRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '7px 0',
+        borderBottom: '1px solid var(--dsw-alias-border-l1)',
+        fontSize: 13,
+      },
+      deviceName: { width: 150, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      deviceId: { width: 104, flexShrink: 0, opacity: 0.65 },
     };
 
     function statusColor(state) {
@@ -104,6 +114,8 @@ window.__ModuleLoader__.load({
       const [result, setResult] = useState(null);
       const [error, setError] = useState('');
       const [copied, setCopied] = useState('');
+      const [vncBusy, setVncBusy] = useState('');
+      const [vncNotice, setVncNotice] = useState(null);
 
       useEffect(() => {
         try {
@@ -186,7 +198,62 @@ window.__ModuleLoader__.load({
         URL.revokeObjectURL(url);
       }, [result]);
 
+      // VNC is for the operator: one click should both bring the remote server
+      // up and show the screen. The window has to be opened synchronously inside
+      // the click handler, otherwise the popup blocker eats it — so open a blank
+      // one first and point it at the page once the forward is ready.
+      const remoteView = useCallback(async (sessionKey, deviceName, action) => {
+        if (!sessionKey) return;
+        setVncBusy(sessionKey);
+        setVncNotice(null);
+
+        let win = null;
+        if (!action || action === 'start') {
+          try {
+            win = window.open('', '_blank', 'width=1400,height=900');
+          } catch {
+            win = null;
+          }
+        }
+
+        try {
+          const response = await fetch(`${API}/vnc`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: action || 'start', target: sessionKey }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) {
+            if (win) win.close();
+            setVncNotice({ kind: 'error', text: data.error || `HTTP ${response.status}` });
+          } else if (data.stopped) {
+            if (win) win.close();
+            setVncNotice({ kind: 'info', text: `${deviceName} 的远程查看已关闭（端口 ${data.localPort} 已释放）` });
+          } else {
+            if (win && data.webUrl) {
+              win.location.href = data.webUrl;
+            }
+            setVncNotice({
+              kind: 'ok',
+              text: win && data.webUrl
+                ? `${deviceName} 的画面已在新标签页打开（${data.address}）`
+                : `${deviceName} → ${data.address}`,
+              address: data.address,
+              webUrl: data.webUrl || '',
+              reused: data.reused,
+            });
+          }
+        } catch (err) {
+          if (win) win.close();
+          setVncNotice({ kind: 'error', text: `请求失败：${err && err.message}` });
+        } finally {
+          setVncBusy('');
+        }
+      }, []);
+
       const kits = state && state.kits ? state.kits : [];
+      const devices = state && state.devices ? state.devices : [];
 
       return h('div', { style: S.wrap },
         h('div', { style: S.card },
@@ -219,6 +286,72 @@ window.__ModuleLoader__.load({
               h('span', { style: S.label }, '在线客户机'),
               h('span', { style: S.hint },
                 state.clients.map((c) => `${c.name}（${c.clientOs || '?'}，:${c.localPort}）`).join('、')))
+            : null),
+
+        h('div', { style: { ...S.card, marginTop: 14 } },
+          h('h2', { style: S.h2 },
+            devices.length ? `设备（${devices.filter((d) => d.online).length}/${devices.length} 在线）` : '设备'),
+          devices.length === 0
+            ? h('div', { style: S.hint }, '还没有 kit。在下面填个名字，会生成第一个。')
+            : h('div', null, devices.flatMap((device) => {
+              if (!device.online || !device.sessions.length) {
+                return [h('div', { key: device.kitId, style: S.deviceRow },
+                  h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-idle-primary)' } }),
+                  h('span', { style: S.deviceName, title: device.name }, device.name),
+                  h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
+                  h('span', { style: { ...S.hint, flex: 1 } }, '离线'))];
+              }
+              // One row per machine, so "远程查看" always names a single session.
+              return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceRow },
+                h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-success-primary)' } }),
+                h('span', { style: S.deviceName, title: device.name }, session.clientHost || device.name),
+                h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
+                h('span', { style: { ...S.hint, flex: 1, wordBreak: 'break-all' } },
+                  `${session.user || ''}　:${session.localPort}`),
+                h('button', {
+                  style: { ...S.ghost, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+                  disabled: vncBusy === session.sessionKey,
+                  onClick: () => remoteView(session.sessionKey, session.clientHost || device.name),
+                }, vncBusy === session.sessionKey ? '开启中…' : '远程查看')));
+            })),
+          vncNotice
+            ? h('div', {
+              style: {
+                ...S.hint,
+                marginTop: 10,
+                color: vncNotice.kind === 'error'
+                  ? 'var(--dsw-alias-state-error-primary)'
+                  : vncNotice.kind === 'ok'
+                    ? 'var(--dsw-alias-state-success-primary)'
+                    : undefined,
+              },
+            },
+            vncNotice.text,
+            vncNotice.address
+              ? h('span', null,
+                '　',
+                // Browser client: no VNC viewer needed on this machine.
+                vncNotice.webUrl
+                  ? h('a', {
+                    href: vncNotice.webUrl,
+                    target: '_blank',
+                    rel: 'noopener noreferrer',
+                    style: {
+                      ...S.button,
+                      padding: '4px 12px',
+                      fontSize: 12,
+                      textDecoration: 'none',
+                      display: 'inline-block',
+                      marginLeft: 4,
+                    },
+                  }, '打开画面')
+                  : null,
+                h('button', {
+                  style: { ...S.ghost, padding: '4px 10px', fontSize: 12, marginLeft: 6, cursor: 'pointer' },
+                  onClick: () => copy(vncNotice.address, 'vnc'),
+                }, copied === 'vnc' ? '已复制' : '复制地址'),
+                '　也可以用自己的 VNC 查看器连')
+              : null)
             : null),
 
         h('div', { style: S.card },
