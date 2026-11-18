@@ -154,6 +154,28 @@ export function apply(ctx, config) {
       } catch { /* stay anonymous */ }
       return ''
     }
+    // The platform token is the credential the server can verify without any
+    // password being provisioned. Read lazily so a re-login in DSH is picked up
+    // on the next attempt instead of being frozen at startup.
+    const platformToken = async () => {
+      try {
+        const session = await accountService.getPlatformSession()
+        const token = session?.token ? String(session.token) : ''
+        backend.notePlatformSession({
+          hasToken: Boolean(token),
+          userId: session?.userId ? String(session.userId) : '',
+          origin: session?.origin ? String(session.origin) : '',
+        })
+        return token
+      } catch (err) {
+        backend.notePlatformSession({ hasToken: false, userId: '', error: err?.message || String(err) })
+        return ''
+      }
+    }
+    backend.setPlatformTokenProvider(platformToken)
+    // Report once at startup so the diag endpoint shows whether verifiable login
+    // is possible on this machine, without ever exposing the token itself.
+    platformToken().catch(() => {})
     resolveAccount().then((id) => {
       if (stopped) return
       backend.setAccount(id)
