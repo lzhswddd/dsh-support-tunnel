@@ -11,8 +11,11 @@
         # so the sha256 fingerprint is pinned instead.
         remoteUrl: 'https://127.0.0.1:24444'
         remoteTimeoutMs: 8000
-        # Only needed when the admin API is bound beyond loopback; a loopback
-        # caller is trusted. Kept here so the same file works on any machine.
+        # Only needed when the admin API is bound beyond loopback, i.e. when this
+        # machine is not the tunnel server. Deliberately empty here: a committed
+        # token would be published with the repository. Set it in the profile
+        # patch (`~/.dsh/profiles/<profile>/cordis.patch.yml`, not versioned) or
+        # export TUNNEL_API_TOKEN instead.
         remoteToken: ''
         remoteFingerprint: 'sha256:eY2bT4vockxqUTwQEwayqN3VvEuTC8EPIz0aUvHTe8Y'
         # Which kits this control side may see.
