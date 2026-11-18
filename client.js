@@ -237,7 +237,7 @@ window.__ModuleLoader__.load({
             setVncNotice({
               kind: 'ok',
               text: win && data.webUrl
-                ? `${deviceName} 的画面已在新标签页打开（${data.address}）`
+                ? `${deviceName} 的画面已在独立窗口打开（${data.address}）`
                 : `${deviceName} → ${data.address}`,
               address: data.address,
               webUrl: data.webUrl || '',
@@ -341,24 +341,9 @@ window.__ModuleLoader__.load({
               },
             },
             vncNotice.text,
-            // Show the screen inline. This page runs inside the desktop app, where
-            // window.open is refused, so a popup never appears — the viewer has to live
-            // in the page itself. The link below stays as a way out to a real browser.
-            vncNotice.webUrl && vncNotice.kind === 'ok'
-              ? h('iframe', {
-                src: vncNotice.webUrl,
-                title: '远程画面',
-                style: {
-                  width: '100%',
-                  height: 560,
-                  marginTop: 10,
-                  display: 'block',
-                  border: '1px solid var(--dsw-alias-border-secondary, #3a3a3a)',
-                  borderRadius: 8,
-                  background: '#000',
-                },
-              })
-              : null,
+            // The Host opens the viewer in its own window: a Chromium app
+            // window looks like a remote-desktop client, and this page cannot
+            // create windows at all because it runs inside the desktop app.
             vncNotice.address
               ? h('span', null,
                 '　',
