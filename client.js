@@ -86,20 +86,22 @@ window.__ModuleLoader__.load({
         wordBreak: 'break-all',
       },
       dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 6 },
-      deviceRow: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '7px 0',
-        borderBottom: '1px solid var(--dsw-alias-border-l1)',
-        fontSize: 13,
+      // Two lines instead of six columns. The settings pane is too narrow for six
+      // fixed columns — the action button got clipped at the right edge — so each
+      // device became a card: status + name + button on top, note + connection below.
+      // minWidth: 0 is what lets the flexible cells ellipsize instead of overflowing.
+      deviceCard: { padding: '8px 0', borderBottom: '1px solid var(--dsw-alias-border-l1)', fontSize: 13 },
+      deviceLine1: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
+      deviceLine2: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingLeft: 16, minWidth: 0 },
+      deviceTitle: {
+        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', fontWeight: 500,
       },
-      deviceName: { width: 132, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-      deviceId: { width: 92, flexShrink: 0, opacity: 0.65, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-      // Fixed widths everywhere: a flex row with one greedy column pushed the rest
-      // narrow enough that 'ubuntu' broke into ubu/nt/u and ':40001' into :40/001.
-      deviceNote: { width: 112, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-      deviceUser: { width: 118, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 },
+      deviceNote: {
+        flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', cursor: 'pointer',
+      },
+      deviceMeta: { flexShrink: 0, whiteSpace: 'nowrap', opacity: 0.75 },
       deviceAction: { flexShrink: 0, whiteSpace: 'nowrap' },
     };
 
@@ -333,61 +335,67 @@ window.__ModuleLoader__.load({
             ? h('div', { style: S.hint }, '还没有 kit。在下面填个名字，会生成第一个。')
             : h('div', null, devices.flatMap((device) => {
               if (!device.online || !device.sessions.length) {
-                return [h('div', { key: device.kitId, style: S.deviceRow },
-                  h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-idle-primary)' } }),
-                  h('span', { style: S.deviceName, title: device.name }, device.name),
-                  h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
-                  h('span', { style: { ...S.hint, flex: 1 } }, '离线'))];
+                return [h('div', { key: device.kitId, style: S.deviceCard },
+                  h('div', { style: S.deviceLine1 },
+                    h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-idle-primary)' } }),
+                    h('span', { style: S.deviceTitle, title: device.name }, device.name),
+                    h('span', { style: { ...S.hint, ...S.deviceMeta } }, '离线')),
+                  h('div', { style: S.deviceLine2 },
+                    h('span', { style: { ...S.mono, ...S.hint, ...S.deviceMeta }, title: 'kitId' }, device.kitId)))];
               }
               // One row per machine, so "远程查看" always names a single session.
-              return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceRow },
-                h('span', { style: S.deviceName, title: device.name }, session.clientHost || device.name),
-                // Two states, because they fail independently: the agent can be
-                // connected while sshd is dead, and then every command fails.
-                h('span', { title: 'agent 已连接', style: {
-                  ...S.dot, background: 'var(--dsw-alias-state-success-primary)', marginLeft: 2,
-                } }),
-                h('span', {
-                  title: session.sshUp ? 'ssh 可登录' : `ssh 不可用${session.sshDetail ? '：' + session.sshDetail : ''}` ,
-                  style: {
-                    ...S.dot,
-                    marginLeft: 2,
-                    background: session.sshUp
-                      ? 'var(--dsw-alias-state-success-primary)'
-                      : 'var(--dsw-alias-state-error-primary)',
-                  },
-                }),
-                h('span', {
-                  style: { ...S.hint, ...S.deviceNote, cursor: 'pointer' },
-                  title: device.notes ? `${device.notes}（点击编辑）` : '点击添加备注',
-                  onClick: () => { setNoteEditing(device.kitId); setNoteDraft(device.notes || ''); },
-                }, noteEditing === device.kitId
-                  ? h('input', {
-                    autoFocus: true,
-                    value: noteDraft,
-                    onChange: (e) => setNoteDraft(e.target.value),
-                    onBlur: () => saveNote(device.kitId, noteDraft),
-                    onKeyDown: (e) => {
-                      if (e.key === 'Enter') saveNote(device.kitId, noteDraft);
-                      if (e.key === 'Escape') setNoteEditing('');
+              return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceCard },
+                h('div', { style: S.deviceLine1 },
+                  h('span', { title: '隧道已连接', style: {
+                    ...S.dot, background: 'var(--dsw-alias-state-success-primary)', marginRight: 2,
+                  } }),
+                  h('span', {
+                    title: session.sshUp ? 'ssh 可登录' : `ssh 不可用${session.sshDetail ? '：' + session.sshDetail : ''}` ,
+                    style: {
+                      ...S.dot,
+                      marginRight: 6,
+                      background: session.sshUp
+                        ? 'var(--dsw-alias-state-success-primary)'
+                        : 'var(--dsw-alias-state-error-primary)',
                     },
-                    style: { width: 180, fontSize: 12, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--dsw-alias-border-secondary, #444)', background: 'transparent', color: 'inherit' },
-                  })
-                  : (device.notes || '＋备注')),
-                h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
-                h('span', { style: { ...S.hint, ...S.deviceUser }, title: `${session.user || ''} :${session.localPort}` },
-                  `${session.user || ''} :${session.localPort}`),
-                h('button', {
-                  style: { ...S.ghost, ...S.deviceAction, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-                  disabled: vncBusy === session.sessionKey,
-                  onClick: () => remoteView(
-                    session.sessionKey,
-                    session.clientHost || device.name,
-                    hasViewer(device.kitId) ? 'stop' : 'start',
-                  ),
-                }, vncBusy === session.sessionKey
+                  }),
+                  h('span', {
+                    style: S.deviceTitle,
+                    title: `${device.name} · ${device.kitId}`,
+                  }, session.clientHost || device.name),
+                  h('button', {
+                    style: { ...S.ghost, ...S.deviceAction, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+                    disabled: vncBusy === session.sessionKey,
+                    onClick: () => remoteView(
+                      session.sessionKey,
+                      session.clientHost || device.name,
+                      hasViewer(device.kitId) ? 'stop' : 'start',
+                    ),
+                  }, vncBusy === session.sessionKey
                     ? '开启中…'
-                    : (hasViewer(device.kitId) ? '关闭远程' : '远程查看'))));
+                    : (hasViewer(device.kitId) ? '关闭远程' : '远程查看'))),
+                h('div', { style: S.deviceLine2 },
+                  h('span', {
+                    style: { ...S.hint, ...S.deviceNote },
+                    title: device.notes ? `${device.notes}（点击编辑）` : '点击添加备注',
+                    onClick: () => { setNoteEditing(device.kitId); setNoteDraft(device.notes || ''); },
+                  }, noteEditing === device.kitId
+                    ? h('input', {
+                      autoFocus: true,
+                      value: noteDraft,
+                      onChange: (e) => setNoteDraft(e.target.value),
+                      onBlur: () => saveNote(device.kitId, noteDraft),
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter') saveNote(device.kitId, noteDraft);
+                        if (e.key === 'Escape') setNoteEditing('');
+                      },
+                      style: { width: '100%', fontSize: 12, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--dsw-alias-border-secondary, #444)', background: 'transparent', color: 'inherit' },
+                    })
+                    : (device.notes || '＋备注')),
+                  h('span', {
+                    style: { ...S.hint, ...S.mono, ...S.deviceMeta },
+                    title: `${session.user || ''} :${session.localPort}`,
+                  }, `${session.user || ''} :${session.localPort}`))));
             })),
           vncNotice
             ? h('div', {
