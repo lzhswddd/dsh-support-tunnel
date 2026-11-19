@@ -317,6 +317,9 @@ window.__ModuleLoader__.load({
               h('span', { style: S.hint },
                 state.clients.map((c) => `${c.name}（${c.clientOs || '?'}，:${c.localPort}）`).join('、')))
             : null),
+          h('div', { style: { ...S.hint, marginTop: 8 } },
+            '隧道只负责到达。桌面操作、COM 调用和命令执行由客户机会话里的 session1-agent 完成（127.0.0.1:9997），'
+            + '它没起来时隧道显示在线但工具会失败；ssh 与 scp 是保底通道，agent 挂了仍可用。'),
 
         h('div', { style: { ...S.card, marginTop: 14 } },
           h('h2', { style: S.h2 },
