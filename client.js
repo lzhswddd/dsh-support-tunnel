@@ -94,8 +94,13 @@ window.__ModuleLoader__.load({
         borderBottom: '1px solid var(--dsw-alias-border-l1)',
         fontSize: 13,
       },
-      deviceName: { width: 150, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-      deviceId: { width: 104, flexShrink: 0, opacity: 0.65 },
+      deviceName: { width: 132, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      deviceId: { width: 92, flexShrink: 0, opacity: 0.65, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      // Fixed widths everywhere: a flex row with one greedy column pushed the rest
+      // narrow enough that 'ubuntu' broke into ubu/nt/u and ':40001' into :40/001.
+      deviceNote: { width: 112, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      deviceUser: { width: 118, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 },
+      deviceAction: { flexShrink: 0, whiteSpace: 'nowrap' },
     };
 
     function statusColor(state) {
@@ -353,8 +358,7 @@ window.__ModuleLoader__.load({
                   },
                 }),
                 h('span', {
-                  style: { ...S.hint, marginLeft: 6, maxWidth: 220, overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' },
+                  style: { ...S.hint, ...S.deviceNote, cursor: 'pointer' },
                   title: device.notes ? `${device.notes}（点击编辑）` : '点击添加备注',
                   onClick: () => { setNoteEditing(device.kitId); setNoteDraft(device.notes || ''); },
                 }, noteEditing === device.kitId
@@ -371,10 +375,10 @@ window.__ModuleLoader__.load({
                   })
                   : (device.notes || '＋备注')),
                 h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
-                h('span', { style: { ...S.hint, flex: 1, wordBreak: 'break-all' } },
-                  `${session.user || ''}　:${session.localPort}`),
+                h('span', { style: { ...S.hint, ...S.deviceUser }, title: `${session.user || ''} :${session.localPort}` },
+                  `${session.user || ''} :${session.localPort}`),
                 h('button', {
-                  style: { ...S.ghost, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+                  style: { ...S.ghost, ...S.deviceAction, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
                   disabled: vncBusy === session.sessionKey,
                   onClick: () => remoteView(
                     session.sessionKey,
