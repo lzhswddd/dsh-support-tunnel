@@ -85,7 +85,10 @@ window.__ModuleLoader__.load({
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-all',
       },
-      dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 6 },
+      dot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 4 },
+      // The two dots are different channels that fail independently; without a label
+      // they read as one status shown twice.
+      dotLabel: { fontSize: 11, color: 'var(--dsw-alias-label-secondary)', whiteSpace: 'nowrap' },
       // Two lines instead of six columns. The settings pane is too narrow for six
       // fixed columns — the action button got clipped at the right edge — so each
       // device became a card: status + name + button on top, note + connection below.
@@ -346,19 +349,20 @@ window.__ModuleLoader__.load({
               // One row per machine, so "远程查看" always names a single session.
               return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceCard },
                 h('div', { style: S.deviceLine1 },
-                  h('span', { title: '隧道已连接', style: {
-                    ...S.dot, background: 'var(--dsw-alias-state-success-primary)', marginRight: 2,
+                  h('span', { title: '隧道：support-agent 已连接服务端', style: {
+                    ...S.dot, background: 'var(--dsw-alias-state-success-primary)',
                   } }),
+                  h('span', { style: { ...S.dotLabel, marginRight: 6 } }, '隧道'),
                   h('span', {
-                    title: session.sshUp ? 'ssh 可登录' : `ssh 不可用${session.sshDetail ? '：' + session.sshDetail : ''}` ,
+                    title: session.sshUp ? 'ssh：可登录，能跑命令和传文件' : `ssh：不可用${session.sshDetail ? '（' + session.sshDetail + '）' : ''}` ,
                     style: {
                       ...S.dot,
-                      marginRight: 6,
                       background: session.sshUp
                         ? 'var(--dsw-alias-state-success-primary)'
                         : 'var(--dsw-alias-state-error-primary)',
                     },
                   }),
+                  h('span', { style: { ...S.dotLabel, marginRight: 8 } }, 'ssh'),
                   h('span', {
                     style: S.deviceTitle,
                     title: `${device.name} · ${device.kitId}`,
