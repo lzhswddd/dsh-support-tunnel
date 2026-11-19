@@ -116,6 +116,9 @@ window.__ModuleLoader__.load({
       const [copied, setCopied] = useState('');
       const [vncBusy, setVncBusy] = useState('');
       const [vncNotice, setVncNotice] = useState(null);
+      // Which kit note is being edited, and the draft text.
+      const [noteEditing, setNoteEditing] = useState('');
+      const [noteDraft, setNoteDraft] = useState('');
 
       useEffect(() => {
         try {
@@ -141,6 +144,25 @@ window.__ModuleLoader__.load({
           setLoadError(`读取失败：${err && err.message ? err.message : '网络错误'}`);
         }
       }, []);
+
+      const saveNote = useCallback(async (kitId, text) => {
+        setNoteEditing('');
+        try {
+          const response = await fetch(`${API}/notes`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ kitId, notes: text }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) {
+            setVncNotice({ kind: 'error', text: data.error || `保存备注失败：HTTP ${response.status}` });
+          }
+        } catch (err) {
+          setVncNotice({ kind: 'error', text: `保存备注失败：${err && err.message}` });
+        }
+        load();
+      }, [load]);
 
       useEffect(() => {
         load();
@@ -311,8 +333,40 @@ window.__ModuleLoader__.load({
               }
               // One row per machine, so "远程查看" always names a single session.
               return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceRow },
-                h('span', { style: { ...S.dot, background: 'var(--dsw-alias-state-success-primary)' } }),
                 h('span', { style: S.deviceName, title: device.name }, session.clientHost || device.name),
+                // Two states, because they fail independently: the agent can be
+                // connected while sshd is dead, and then every command fails.
+                h('span', { title: 'agent 已连接', style: {
+                  ...S.dot, background: 'var(--dsw-alias-state-success-primary)', marginLeft: 2,
+                } }),
+                h('span', {
+                  title: session.sshUp ? 'ssh 可登录' : `ssh 不可用${session.sshDetail ? '：' + session.sshDetail : ''}` ,
+                  style: {
+                    ...S.dot,
+                    marginLeft: 2,
+                    background: session.sshUp
+                      ? 'var(--dsw-alias-state-success-primary)'
+                      : 'var(--dsw-alias-state-error-primary)',
+                  },
+                }),
+                h('span', {
+                  style: { ...S.hint, marginLeft: 6, maxWidth: 220, overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' },
+                  title: device.notes ? `${device.notes}（点击编辑）` : '点击添加备注',
+                  onClick: () => { setNoteEditing(device.kitId); setNoteDraft(device.notes || ''); },
+                }, noteEditing === device.kitId
+                  ? h('input', {
+                    autoFocus: true,
+                    value: noteDraft,
+                    onChange: (e) => setNoteDraft(e.target.value),
+                    onBlur: () => saveNote(device.kitId, noteDraft),
+                    onKeyDown: (e) => {
+                      if (e.key === 'Enter') saveNote(device.kitId, noteDraft);
+                      if (e.key === 'Escape') setNoteEditing('');
+                    },
+                    style: { width: 180, fontSize: 12, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--dsw-alias-border-secondary, #444)', background: 'transparent', color: 'inherit' },
+                  })
+                  : (device.notes || '＋备注')),
                 h('span', { style: { ...S.mono, ...S.deviceId } }, device.kitId),
                 h('span', { style: { ...S.hint, flex: 1, wordBreak: 'break-all' } },
                   `${session.user || ''}　:${session.localPort}`),
