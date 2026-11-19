@@ -96,6 +96,12 @@ window.__ModuleLoader__.load({
       deviceCard: { padding: '8px 0', borderBottom: '1px solid var(--dsw-alias-border-l1)', fontSize: 13 },
       deviceLine1: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
       deviceLine2: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 2, paddingLeft: 16, minWidth: 0 },
+      deviceNameFirst: {
+        flexShrink: 0, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', fontWeight: 500, marginRight: 6,
+      },
+      // Spacer so the action button stays right-aligned now that the name is first.
+      deviceSpacer: { flex: 1, minWidth: 8 },
       deviceTitle: {
         flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
         whiteSpace: 'nowrap', fontWeight: 500,
@@ -349,6 +355,11 @@ window.__ModuleLoader__.load({
               // One row per machine, so "远程查看" always names a single session.
               return device.sessions.map((session) => h('div', { key: session.sessionKey, style: S.deviceCard },
                 h('div', { style: S.deviceLine1 },
+                  // Identity first: the machine is what you scan for, the dots qualify it.
+                  h('span', {
+                    style: { ...S.deviceNameFirst },
+                    title: `${device.name} · ${device.kitId}`,
+                  }, session.clientHost || device.name),
                   h('span', { title: '隧道：support-agent 已连接服务端', style: {
                     ...S.dot, background: 'var(--dsw-alias-state-success-primary)',
                   } }),
@@ -362,11 +373,8 @@ window.__ModuleLoader__.load({
                         : 'var(--dsw-alias-state-error-primary)',
                     },
                   }),
-                  h('span', { style: { ...S.dotLabel, marginRight: 8 } }, 'ssh'),
-                  h('span', {
-                    style: S.deviceTitle,
-                    title: `${device.name} · ${device.kitId}`,
-                  }, session.clientHost || device.name),
+                  h('span', { style: { ...S.dotLabel } }, 'ssh'),
+                  h('span', { style: S.deviceSpacer }),
                   h('button', {
                     style: { ...S.ghost, ...S.deviceAction, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
                     disabled: vncBusy === session.sessionKey,
