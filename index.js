@@ -157,8 +157,14 @@ export function apply(ctx, config) {
     backend.refresh().catch(() => {})
   }
 
-  if (typeof ctx.get === 'function' && ctx.get('deepseekAccount')) {
-    const accountService = ctx.get('deepseekAccount')
+  ctx.inject(['deepseekAccount'], (accountCtx) => {
+    // The service registers in parallel with this plugin, so asking for it once
+    // at apply() time is a race: whichever side starts first wins, and when the
+    // service loses the account stays empty for the whole session — the server
+    // then answers every request with "account required". ctx.inject runs the
+    // callback once the service is actually there.
+    const accountService = accountCtx.deepseekAccount
+    if (!accountService) return
     const resolveAccount = async () => {
       try {
         const identity = await accountService.getDeviceIdentity()
@@ -201,7 +207,7 @@ export function apply(ctx, config) {
       log(id ? `account: ${id.slice(0, 8)}… (kits scoped to this account)` : 'account: not signed in (kits unscoped)')
       backend.refresh().catch(() => {})
     }).catch(() => {})
-  }
+  })
 
   ctx.effect(() => {
     backend.refresh()
