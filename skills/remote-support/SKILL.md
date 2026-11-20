@@ -372,6 +372,60 @@ grdctl rdp disable-view-only        # 允许控制（默认就是可控制）
 ss -tlnp | grep 3389
 ```
 
+**服务不会自己起来。** `grdctl rdp enable` 只是置了配置，真正监听 3389 的是用户级服务：
+
+```bash
+sudo -u <user> env XDG_RUNTIME_DIR=/run/user/$(id -u <user>) \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus \
+    systemctl --user restart gnome-remote-desktop
+```
+
+### 自动登录的机器配不了 RDP 凭据
+
+这条排查起来很费时间，因为报错和真实原因没关系：
+
+```
+$ grdctl rdp set-credentials ubuntu ubuntu
+Object does not exist at path ?/org/freedesktop/secrets/collection/login?
+```
+
+`grdctl` 把用户名密码存进 **gnome-keyring**，而 keyring 的 login collection 只在
+**真正输入过一次密码登录**之后才建立。**配了自动登录的机器永远不会有它**——GNOME 从没
+收到过密码，也就从没解锁过 keyring。
+
+`grdctl status` 会一直显示 `Username: (empty)` / `Password: (empty)`，服务不监听 3389，
+而 `set-credentials` 要么报上面那句，要么**静默卡住**（等一个永远不来的解锁提示）。
+
+两种解法：
+
+**A. 关掉自动登录，手动登一次**（推荐，一次就好）
+
+```bash
+sudo sed -i 's/^AutomaticLoginEnable=true/AutomaticLoginEnable=false/' /etc/gdm3/custom.conf
+sudo systemctl restart gdm3
+# 在机器前（或通过 VNC/控制台）输一次密码登录，keyring 就建好了
+```
+
+**B. 直接解锁 keyring**（不重启图形会话）
+
+```bash
+sudo -u <user> env XDG_RUNTIME_DIR=/run/user/$(id -u <user>) \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u <user>)/bus \
+    bash -c 'echo -n "<密码>" | gnome-keyring-daemon --unlock --components=secrets'
+```
+
+解锁后 `grdctl rdp set-credentials` 立刻能用（返回 0，`status` 里显示 `(hidden)`）。
+
+**TLS 证书不需要 keyring**，可以先用 openssl 自签绕开这一半：
+
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout ~/rdp.key -out ~/rdp.crt -days 3650 -nodes -subj "/CN=$(hostname)"
+grdctl rdp set-tls-cert ~/rdp.crt
+grdctl rdp set-tls-key  ~/rdp.key
+```
+
+但**光有证书不够**：没有凭据，3389 依然不监听。
+
 转发用 `tunnel_vnc` 的 `remotePort`——**那个参数不限于 VNC**：
 
 ```
