@@ -15,6 +15,7 @@ import { createRemoteBackend } from './lib/remote.js'
 import { createVncManager } from './lib/vnc.js'
 import { createNoVncProxy } from './lib/novnc-proxy.js'
 import { registerTools } from './lib/tools.js'
+import { ensureKitKeyAcls } from './lib/key-acl.js'
 import { createSkillProvider } from './lib/skills.js'
 import { registerUiRoutes } from './lib/ui-api.js'
 
@@ -144,6 +145,12 @@ export function apply(ctx, config) {
   })
 
   log(`control side: server ${settings.remoteUrl}, kit ${settings.kitId || '(all)'}`)
+
+  // 复制、解压或还原来的 kit 目录会带着继承的 ACL，Windows OpenSSH 因此拒绝加载
+  // operator 私钥（"拒绝访问" 或 UNPROTECTED PRIVATE KEY FILE，同一个原因）。
+  // 插件自己的 ssh 调用有人兜着，但用户在界面上复制的 ssh 命令不经过插件——
+  // 所以启动时统一收紧一次，让那条命令开箱可用。异步跑，不挡启动。
+  ensureKitKeyAcls(settings.kitsDir, log).catch(() => {})
 
   // Identify the DSH account this Host is signed in as, and hand it to the
   // backend. The tunnel server keeps kits per account, so another computer
