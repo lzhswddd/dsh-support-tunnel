@@ -44,15 +44,55 @@ tunnel_list        # 永远先看：谁在线、端口、kitId、机器名、账
 | 工具 | 用途 |
 |---|---|
 | `tunnel_list` | 在线列表和端口 |
-| **`tunnel_ui`** | **桌面 19 个动作 + agent 7 个命令，见下** |
-| `tunnel_exec` | 在客户机跑命令（走 ssh，session 0） |
+| **`tunnel_ui`** | **26 个动作（19 个桌面 + 7 个 agent 命令），见下** |
+| `tunnel_exec` | 在客户机跑命令，见下「在哪执行」 |
 | `tunnel_upload` / `tunnel_download` | 传文件 |
 | `tunnel_audit` | 读最近的连接/exec/传输/被拦命令记录，`limit` 默认 20 最多 200 |
-| `tunnel_vnc` | 开/关远程画面转发，`action: start\|stop\|status\|password` |
+| **`tunnel_forward`** | 转发任意 TCP 端口给人用（VNC 5900 / RDP 3389 / Web 管理页）；`tunnel_vnc` 是它的别名 |
 | `tunnel_reboot` | 重启客户机，唯一能越过关机守卫的路径 |
 | `tunnel_disconnect` | 断开一台 kit 并释放端口 |
 
 `tunnel_download` 拉大文件要确认写完：截图 PNG 3 MB 时抢断会拿到半截（有 magic 没有 IEND）。
+
+### 这两个工具不在本机开 ssh
+
+`tunnel_exec` 和 `tunnel_ui` **都不在本机起 ssh 进程**：它们把命令 POST 给隧道服务端
+（`/api/kit/<sessionKey>/exec`），**由服务端 SSH 进客户机执行**。
+
+```
+插件 → HTTP → 服务端 → ssh → 隧道 → 客户机 sshd
+```
+
+两个直接后果：
+
+- **本机找不到 ssh 进程**。排查「为什么连不上」时别在本机翻 ssh.exe，那里没有
+- **登录账户以服务端收到的为准**。控制端只能通过请求体里的 `user` 覆盖它；
+  以前不带这个字段，控制端算好的账户（把 `NAME$` 换成真实用户）到服务端就丢了，
+  症状是「改控制端怎么都不生效」——这个坑踩过一次，绕了很久
+
+`tunnel_upload` / `download` / `reboot` 走另一条路（本机 ssh/scp 直连 loopback），
+所以它们和 exec 的失败原因可能不同，别用同一套假设。
+
+### 上报的账户可能是机器账户
+
+agent 被 **SYSTEM 计划任务**拉起时（机器刚重启、还没人登录），它上报的是计算机账户：
+
+```json
+"user": "VISIONFRAME$"
+```
+
+**Windows 不给 `NAME$` 账户交互式登录权**，sshd 一律回 `Permission denied (publickey)`，
+哪怕 key 完全正确、端口也通。实测同一个端口：`VISIONFRAME$` 拒绝，`lzh` 正常返回主机名。
+
+所以 `tunnel_list` 里看到 `user: XXX$` **不用紧张**——那是客户端上报的原始值，
+工具用不用它是另一回事。真正决定登录的是配置：
+
+```yaml
+# cordis.patch.yml
+clientUser: 'lzh'    # 上报名称为空、或以 $ 结尾时，改用它登录
+```
+
+**没配这一项，SYSTEM 拉起的 agent 就等于完全不可用**——而机器重启后正是这个状态。
 
 ## tunnel_ui —— 桌面 agent 的唯一入口
 
@@ -514,6 +554,9 @@ Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附�
 | Linux 改了 py 没生效 | 服务没重启 | `sudo systemctl restart fieldsupport-ui` |
 | Linux 看不到桌面 | Wayland | 无解；要画面只能切 X11 |
 | 重启后连不回来 | 这台没装开机自启 | 现场跑一次 `启动.cmd` 或 `开启开机自启.cmd` |
+| **`Permission denied (publickey)` 但 key 是对的、端口也通** | **agent 上报了机器账户 `NAME$`**（被 SYSTEM 任务拉起）—— Windows 不给这类账户交互式登录权 | 配 `cordis.patch.yml` 的 `clientUser`；判断依据是 `tunnel_list` 里 `user` 以 `$` 结尾 |
+| **本机找不到 ssh 进程** | `tunnel_exec` / `tunnel_ui` 由**服务端**执行，本机只发 HTTP | 正常。要排查去服务端，本机翻了也是空的 |
+| 私钥报「拒绝访问」或 `UNPROTECTED PRIVATE KEY FILE` | 导入的 kit 带着继承 ACL（zip 解压、跨机复制） | 插件启动时已自动收紧；手工可 `icacls <key> /reset` 再 `/inheritance:r /grant:r "<user>:(F)" /grant:r "SYSTEM:(F)"` |
 | **截图看着不对** | 客户机可能有 RDP 会话占了某块屏；且 `windows` 的坐标和截图像素在 DPI 缩放下对不上 | **用 `windows` 枚举核对，别只信图** |
 
 ## 远程更新客户端（不用人碰机器）
