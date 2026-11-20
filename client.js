@@ -130,6 +130,7 @@ window.__ModuleLoader__.load({
       const [result, setResult] = useState(null);
       const [error, setError] = useState('');
       const [copied, setCopied] = useState('');
+      const [sshBusy, setSshBusy] = useState('');
       const [vncBusy, setVncBusy] = useState('');
       const [vncNotice, setVncNotice] = useState(null);
       // Which kit note is being edited, and the draft text.
@@ -222,6 +223,30 @@ window.__ModuleLoader__.load({
           setTimeout(() => setCopied(''), 1500);
         } catch {
           setCopied('失败');
+        }
+      }, []);
+
+      // 让 Host 在桌面上开一个终端窗口直接连过去。
+      // 比复制命令好：粘贴到别的机器上会失效（路径和端口都只在这台机器上）。
+      const openSsh = useCallback(async (sessionKey, deviceName) => {
+        if (!sessionKey) return;
+        setSshBusy(sessionKey);
+        setVncNotice(null);
+        try {
+          const response = await fetch(`${API}/ssh`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionKey }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) {
+            setVncNotice({ kind: 'error', text: `${deviceName}：${data.error || `HTTP ${response.status}`}` });
+          }
+        } catch (err) {
+          setVncNotice({ kind: 'error', text: `打开终端失败：${err?.message || err}` });
+        } finally {
+          setSshBusy('');
         }
       }, []);
 
@@ -408,14 +433,14 @@ window.__ModuleLoader__.load({
                     style: { ...S.hint, ...S.mono, ...S.deviceMeta },
                     title: `${session.user || ''} :${session.localPort}`,
                   }, `${session.user || ''} :${session.localPort}`),
-                  // 「SSH」把完整命令复制到剪贴板，粘到任何终端就能进这台机器——
-                  // 运维习惯用 ssh 而不是点按钮，这条路得留着。
+                  // 「SSH」让 Host 直接弹一个终端窗口连过去，不用复制粘贴。
                   session.sshCommand
                     ? h('button', {
                       style: { ...S.ghost, padding: '2px 8px', fontSize: 11, marginLeft: 8, cursor: 'pointer' },
                       title: session.sshCommand,
-                      onClick: () => copy(session.sshCommand, 'ssh-' + session.sessionKey),
-                    }, copied === 'ssh-' + session.sessionKey ? '已复制' : 'SSH')
+                      disabled: sshBusy === session.sessionKey,
+                      onClick: () => openSsh(session.sessionKey, session.clientHost || device.name),
+                    }, sshBusy === session.sessionKey ? '打开中…' : 'SSH')
                     : null)));
             })),
           vncNotice
