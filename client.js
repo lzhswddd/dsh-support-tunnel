@@ -407,7 +407,16 @@ window.__ModuleLoader__.load({
                   h('span', {
                     style: { ...S.hint, ...S.mono, ...S.deviceMeta },
                     title: `${session.user || ''} :${session.localPort}`,
-                  }, `${session.user || ''} :${session.localPort}`))));
+                  }, `${session.user || ''} :${session.localPort}`),
+                  // 「SSH」把完整命令复制到剪贴板，粘到任何终端就能进这台机器——
+                  // 运维习惯用 ssh 而不是点按钮，这条路得留着。
+                  session.sshCommand
+                    ? h('button', {
+                      style: { ...S.ghost, padding: '2px 8px', fontSize: 11, marginLeft: 8, cursor: 'pointer' },
+                      title: session.sshCommand,
+                      onClick: () => copy(session.sshCommand, 'ssh-' + session.sessionKey),
+                    }, copied === 'ssh-' + session.sessionKey ? '已复制' : 'SSH')
+                    : null)));
             })),
           vncNotice
             ? h('div', {
