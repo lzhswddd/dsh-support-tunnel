@@ -135,7 +135,7 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 | 截图 | PrintWindow：**被挡住、最小化都能截**，可只截某个窗口 | grim/scrot 截屏幕，窗口被挡就截到挡它的东西 |
 | 自启 | 5 个计划任务 | 4 个 systemd unit |
 | 守护 | `_fs_keeper` 每分钟 + `_fs_rescue` 更新兜底 | `Restart=always` + keeper timer，**没有 rescue** |
-| 远程画面 | UltraVNC，**锁屏可见可解锁** | Wayland 下**完全无解**，要切 X11 |
+| 远程画面 | UltraVNC，**锁屏可见可解锁** | **RDP**（gnome-remote-desktop，Wayland 下可用）；VNC 不行 |
 | 部署路径 | `<盘>:\FieldSupport\windows\` 或 `<盘>:\windows\` | `/opt/fieldsupport/` |
 | 安装 | 双击 `启动.cmd` | `sudo bash install.sh --systemd` |
 | hub 应用 | `excel`(6) `solidworks`(8) | 空（通了但没注册） |
@@ -330,7 +330,7 @@ tunnel_ui {action:'libs', modules:['PIL','yaml']}
 **现场机器常常没网**，所以要么提前在能上网的机器上 `apt download` 拿 `.deb` 拷过去
 `dpkg -i`，要么把这些包一起打进 U 盘。
 
-### GNOME Wayland：截不到画面，也没有远程画面
+### GNOME Wayland：截图不行，但远程画面有出路
 
 `shot` 先试 grim，**grim 在 GNOME 上一定失败**：
 
@@ -349,24 +349,57 @@ org.gnome.Shell.Screenshot         AccessDenied: Screenshot is not allowed
 org.freedesktop.portal.Screenshot  存在，但要用户在弹窗上点确认，无人值守就是卡死
 ```
 
-VNC 同样不通：
-
-```
-grdctl vnc     认证通过，返回 800x600、3 种颜色的空虚拟桌面（不是用户的屏幕）
-x11vnc         X Error BadMatch (X_GetImage) —— Xwayland 不提供根窗口像素
-```
-
 所以 agent 现在**按像素判断**：全黑就返回 `ok=false` 并说明原因，不再交回一张黑图让调用方
-以为成功了。看到这个错误不用怀疑参数——**Wayland 下就是没有画面**。
+以为成功了。
 
-要真实屏幕（含锁屏）只能切 X11：
+**但「截图不行」不等于「看不到画面」。RDP 可以。**
+
+GNOME 自带的 `gnome-remote-desktop` 在 compositor **内部**抓屏（走 PipeWire），不受
+Xwayland 限制，也不像 VNC 那样另起一个空的虚拟桌面。Ubuntu 22.04 默认就装好了。
+
+```bash
+# 查状态（必须带这两个环境变量，否则报 "Cannot autolaunch D-Bus without X11 $DISPLAY"）
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+grdctl status
+
+# 启用与设凭据
+grdctl rdp enable
+grdctl rdp set-credentials <用户名> <密码>
+grdctl rdp disable-view-only        # 允许控制（默认就是可控制）
+
+# 确认在听
+ss -tlnp | grep 3389
+```
+
+转发用 `tunnel_vnc` 的 `remotePort`——**那个参数不限于 VNC**：
+
+```
+tunnel_vnc {target:'linux-field', action:'start', remotePort:3389}
+→ 127.0.0.1:5902，然后用 mstsc 连（不是 VNC 查看器）
+```
+
+握手实测（走隧道，19 字节请求 → 19 字节响应）：
+
+```
+03 00 00 13 0E D0 …        0xD0 = Connection Confirm
+… 02 03 08 00 02 00 00 00  Negotiation Response，选中 HYBRID (TLS+NLA)
+```
+
+**所以：要画面用 RDP，别试 VNC。** 这台机器 `grdctl vnc` 是 disabled，就算启用也是
+headless 空桌面；`x11vnc` 直接 `X Error BadMatch`。
+
+`shot` 依然不行——那是给 agent 拿像素用的另一条路，依赖 compositor 的截图接口，
+和画面传输不是一回事。
+
+要彻底解决截图（含锁屏），只能切 X11：
 
 ```bash
 sudo sed -i 's/^#\?WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/custom.conf
 sudo systemctl restart gdm3
 ```
 
-切过去之后 grim 就别用了（走 scrot），`paste` 也会自动从 wl-copy 回落 xclip。
+切过去之后 grim 就别用了（走 scrot），`paste` 会自动从 wl-copy 回落 xclip。
 
 Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附加项。
 
