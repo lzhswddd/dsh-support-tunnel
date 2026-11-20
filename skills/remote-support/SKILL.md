@@ -129,8 +129,8 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 | **为什么需要 agent** | **跨 Session 0 隔离**：sshd 在 0，桌面在 1+ | **补环境变量**：有权限但没 `DISPLAY` |
 | `com` | ✅ 绑用户已打开的实例 | ❌ 没有 COM |
 | `libs` | ✅ | ✅ |
-| `paste` | ✅ | ❌ 缺 xclip/xsel，明确报错 |
-| `ocrText` | ✅ | ❌ 缺 tesseract，明确报错 |
+| `paste` | ✅ | ✅ 装 wl-clipboard 后可用，Wayland 走 wl-copy |
+| `ocrText` | ✅ | ⚠️ 要 tesseract，且**截图那一步在 GNOME Wayland 下拿不到画面** |
 | `stop` / `restart:true` | ✅ 计划任务 | ✅ hold 标记，见下 |
 | 截图 | PrintWindow：**被挡住、最小化都能截**，可只截某个窗口 | grim/scrot 截屏幕，窗口被挡就截到挡它的东西 |
 | 自启 | 5 个计划任务 | 4 个 systemd unit |
@@ -305,21 +305,70 @@ fieldsupport-ui-keeper.timer     每分钟 OnCalendar=*:0/1
 `Restart=always` 管崩溃（kill -9 后 2 秒回来）；keeper 管 `stop`/`disable`/符号链接丢失。
 **没有** Windows `_fs_rescue` 那种更新兜底——Linux 暂无远程更新机制。
 
-### Wayland 下没有远程画面
+### Linux 侧要装的工具
+
+agent 只依赖发行版基础包，其余按需装。装完不用重启 agent——每次请求都重新探测。
+
+```bash
+# 剪贴板（paste）。Wayland 用 wl-clipboard，X11 用 xclip
+sudo apt install -y wl-clipboard xclip
+
+# OCR（ocrText）。中文界面要语言包
+sudo apt install -y tesseract-ocr tesseract-ocr-chi-sim
+
+# 截图。grim 只对 wlroots 系合成器有效，GNOME 上装了也用不了
+sudo apt install -y grim scrot
+```
+
+`tunnel_ui action=libs` 能查运行时和具体包，`modules` 还能点名探测：
+
+```
+tunnel_ui {action:'libs', modules:['PIL','yaml']}
+→ {"ok":true, "python":"3.10.12", "available":{"PIL":true,"yaml":true}}
+```
+
+**现场机器常常没网**，所以要么提前在能上网的机器上 `apt download` 拿 `.deb` 拷过去
+`dpkg -i`，要么把这些包一起打进 U 盘。
+
+### GNOME Wayland：截不到画面，也没有远程画面
+
+`shot` 先试 grim，**grim 在 GNOME 上一定失败**：
+
+```
+compositor doesn't support wlr-screencopy-unstable-v1
+```
+
+那个协议是 wlroots 系（sway、Hyprland）才有的。回退到 scrot 之后，拿到的是
+**Xwayland 根窗口**——1920x1080、PNG 合法、27 KB，**整张全黑**。
+
+三条替代路都试过，全封闭：
+
+```
+gnome-screenshot                   Ubuntu 22.04 默认没装
+org.gnome.Shell.Screenshot         AccessDenied: Screenshot is not allowed
+org.freedesktop.portal.Screenshot  存在，但要用户在弹窗上点确认，无人值守就是卡死
+```
+
+VNC 同样不通：
 
 ```
 grdctl vnc     认证通过，返回 800x600、3 种颜色的空虚拟桌面（不是用户的屏幕）
 x11vnc         X Error BadMatch (X_GetImage) —— Xwayland 不提供根窗口像素
 ```
 
-**不是配置问题。** 要看真实屏幕（含锁屏）只能切 X11：
+所以 agent 现在**按像素判断**：全黑就返回 `ok=false` 并说明原因，不再交回一张黑图让调用方
+以为成功了。看到这个错误不用怀疑参数——**Wayland 下就是没有画面**。
+
+要真实屏幕（含锁屏）只能切 X11：
 
 ```bash
 sudo sed -i 's/^#\?WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/custom.conf
 sudo systemctl restart gdm3
 ```
 
-Linux 的主路径是 **agent 的 exec / 文件 / 截图**。`shot` 走 `grim`，VNC 关着也能截，但锁屏时同样不行。
+切过去之后 grim 就别用了（走 scrot），`paste` 也会自动从 wl-copy 回落 xclip。
+
+Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附加项。
 
 **判断 Wayland 不要读 `XDG_SESSION_TYPE`**——sshd 会话里它是空的。用进程表：有 `Xorg` 是 X11，
 有 `Xwayland` 是 Wayland。
