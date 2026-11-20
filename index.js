@@ -15,6 +15,7 @@ import { createRemoteBackend } from './lib/remote.js'
 import { createVncManager } from './lib/vnc.js'
 import { createNoVncProxy } from './lib/novnc-proxy.js'
 import { registerTools } from './lib/tools.js'
+import { createSkillProvider } from './lib/skills.js'
 import { registerUiRoutes } from './lib/ui-api.js'
 
 /** Loader entry id. */
@@ -255,6 +256,31 @@ export function apply(ctx, config) {
   ctx.inject(['webServer'], (webCtx) => {
     if (stopped) return
     return registerUiRoutes(webCtx, backend, settings, vnc, remoteVnc)
+  })
+
+  // Ship the operating knowledge with the tools it describes, and let the model pull
+  // it in only when it needs it. Inline text would cost every request; a skill costs
+  // one summary line until it is loaded.
+  //
+  // ctx.inject rather than adding 'skills' to the module's inject list: a profile
+  // without that service should keep a working tunnel, not go inactive. The returned
+  // disposer goes through this context's effect so an unload removes the provider.
+  ctx.inject(['skills'], (skillCtx) => {
+    const skills = skillCtx.skills
+    if (!skills || typeof skills.registerProvider !== 'function') {
+      log('skills service present but not usable; bundled skill not registered')
+      return
+    }
+    try {
+      skillCtx.effect(
+        () => skills.registerProvider(() => createSkillProvider({ log })),
+        'support-tunnel.skills()',
+      )
+      log('skills: bundled provider registered')
+    } catch (err) {
+      // A skill provider is an extra; it must never take the tunnel down.
+      log(`skills: registration failed: ${err?.message || err}`)
+    }
   })
 
   registerTools(ctx, backend, settings, vnc)
