@@ -128,10 +128,10 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 | 怎么跑 | 计划任务 `_session1_agent`，Interactive | systemd `fieldsupport-ui.service`，root |
 | **为什么需要 agent** | **跨 Session 0 隔离**：sshd 在 0，桌面在 1+ | **补环境变量**：有权限但没 `DISPLAY` |
 | `com` | ✅ 绑用户已打开的实例 | ❌ 没有 COM |
-| `libs` | ✅ | ❌ |
+| `libs` | ✅ | ✅ |
 | `paste` | ✅ | ❌ 缺 xclip/xsel，明确报错 |
 | `ocrText` | ✅ | ❌ 缺 tesseract，明确报错 |
-| `stop restart` | ✅ 计划任务重拉，**这是重载代码的方式** | ⚠️ 见下 |
+| `stop` / `restart:true` | ✅ 计划任务 | ✅ hold 标记，见下 |
 | 截图 | PrintWindow：**被挡住、最小化都能截**，可只截某个窗口 | grim/scrot 截屏幕，窗口被挡就截到挡它的东西 |
 | 自启 | 5 个计划任务 | 4 个 systemd unit |
 | 守护 | `_fs_keeper` 每分钟 + `_fs_rescue` 更新兜底 | `Restart=always` + keeper timer，**没有 rescue** |
@@ -142,12 +142,22 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 
 ### 三个最容易踩的
 
-**1. Linux 上 `stop` 停不住。** unit 配的是 `Restart=always`，agent 退出后 systemd 两秒内拉回来。
+**1. Linux 上「停」和「重启」靠一个 hold 标记区分。** unit 是 `Restart=always`，keeper 又在每分钟守，
+单纯退出等于重启：
 
 ```
-想真正停     → systemctl stop fieldsupport-ui
-想重载代码   → systemctl restart fieldsupport-ui   （改 .py 必须重启才生效）
+stop restart:true   清掉标记再退出 → systemd 立刻拉起，载入磁盘上的新代码
+stop                先写 /run/fieldsupport-hold 再停 → keeper 看到标记就不动手
 ```
+
+标记在 `/run`（tmpfs），**重启机器就清掉**，机器回到被守护状态。手工开回来时记得一并删：
+
+```bash
+sudo rm -f /run/fieldsupport-hold && sudo systemctl start fieldsupport-ui
+```
+
+没有这个标记时，`systemctl stop` 会被 keeper 在一分钟内撤销——实测过一次，日志里
+`restarted fieldsupport-ui.service` 就是它干的。
 
 **2. Linux 没有 `com`，别绕。** 想调某个软件的功能，Linux 侧只能靠它的命令行工具（如 `sw.py`）
 或 `exec` 调外部命令；"绑定用户已经打开的那个实例"这条路在 Linux 上不存在。
@@ -162,7 +172,8 @@ Linux 是整屏截，窗口被挡住就截到挡住它的东西——先 `raise`
 ```
 看 agent 状态   Windows: tunnel_ui action=status          Linux: 同
 跑命令          Windows: tunnel_ui action=exec            Linux: 同
-重载 agent      Windows: tunnel_ui action=stop restart    Linux: systemctl restart fieldsupport-ui
+看装了什么包    Windows: tunnel_ui action=libs            Linux: 同
+重载 agent      Windows: tunnel_ui action=stop restart    Linux: 同
 调 SolidWorks   Windows: tunnel_ui call {app:'solidworks'} Linux: 没有
 取屏幕          Windows: tunnel_ui shot                   Linux: tunnel_ui shot（窗口先 raise）
 ```
