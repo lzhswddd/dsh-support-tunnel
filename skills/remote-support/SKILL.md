@@ -118,6 +118,55 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 新增应用只要往 `apps\` 丢一个 `.py`（`NAME` / `DESCRIPTION` / `SERIAL` / `OPERATIONS`），
 不用改 agent，也不用重启（按 mtime 热加载）。
 
+## Windows 和 Linux 的差异
+
+同一个 `tunnel_ui`，两边能力不一样。**先看 target 是哪种系统，再决定用哪个动作。**
+
+| | Windows | Linux |
+|---|---|---|
+| agent | `session1-agent.py`（pythonw） | `ui-agent.py`（python3） |
+| 怎么跑 | 计划任务 `_session1_agent`，Interactive | systemd `fieldsupport-ui.service`，root |
+| **为什么需要 agent** | **跨 Session 0 隔离**：sshd 在 0，桌面在 1+ | **补环境变量**：有权限但没 `DISPLAY` |
+| `com` | ✅ 绑用户已打开的实例 | ❌ 没有 COM |
+| `libs` | ✅ | ❌ |
+| `paste` | ✅ | ❌ 缺 xclip/xsel，明确报错 |
+| `ocrText` | ✅ | ❌ 缺 tesseract，明确报错 |
+| `stop restart` | ✅ 计划任务重拉，**这是重载代码的方式** | ⚠️ 见下 |
+| 截图 | PrintWindow：**被挡住、最小化都能截**，可只截某个窗口 | grim/scrot 截屏幕，窗口被挡就截到挡它的东西 |
+| 自启 | 5 个计划任务 | 4 个 systemd unit |
+| 守护 | `_fs_keeper` 每分钟 + `_fs_rescue` 更新兜底 | `Restart=always` + keeper timer，**没有 rescue** |
+| 远程画面 | UltraVNC，**锁屏可见可解锁** | Wayland 下**完全无解**，要切 X11 |
+| 部署路径 | `<盘>:\FieldSupport\windows\` 或 `<盘>:\windows\` | `/opt/fieldsupport/` |
+| 安装 | 双击 `启动.cmd` | `sudo bash install.sh --systemd` |
+| hub 应用 | `excel`(6) `solidworks`(8) | 空（通了但没注册） |
+
+### 三个最容易踩的
+
+**1. Linux 上 `stop` 停不住。** unit 配的是 `Restart=always`，agent 退出后 systemd 两秒内拉回来。
+
+```
+想真正停     → systemctl stop fieldsupport-ui
+想重载代码   → systemctl restart fieldsupport-ui   （改 .py 必须重启才生效）
+```
+
+**2. Linux 没有 `com`，别绕。** 想调某个软件的功能，Linux 侧只能靠它的命令行工具（如 `sw.py`）
+或 `exec` 调外部命令；"绑定用户已经打开的那个实例"这条路在 Linux 上不存在。
+
+**3. 截图语义不同，别用同一套判据。** Windows 给 `hwnd` 能只截一个窗口，被遮挡也无所谓；
+Linux 是整屏截，窗口被挡住就截到挡住它的东西——先 `raise` 或 `focus`。
+
+**锁屏画面两边都不要用 `shot` 去取**：Windows 那条路是 VNC（`tunnel_vnc` + 抓帧），Linux 没有这条路。
+
+### 同一件事的两边写法
+
+```
+看 agent 状态   Windows: tunnel_ui action=status          Linux: 同
+跑命令          Windows: tunnel_ui action=exec            Linux: 同
+重载 agent      Windows: tunnel_ui action=stop restart    Linux: systemctl restart fieldsupport-ui
+调 SolidWorks   Windows: tunnel_ui call {app:'solidworks'} Linux: 没有
+取屏幕          Windows: tunnel_ui shot                   Linux: tunnel_ui shot（窗口先 raise）
+```
+
 ## 客户机 U 盘
 
 ```
