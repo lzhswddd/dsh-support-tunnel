@@ -141,6 +141,8 @@ export function apply(ctx, config) {
     storeFile: settings.vncForwardsFile,
     startCommand: settings.vncStartCommand,
     scriptDir: settings.vncScriptDir,
+    // 机器账户（NAME$）换这个，理由同 tools.js 的 sshBase。
+    clientUser: settings.clientUser,
     onLog: log,
   })
 
