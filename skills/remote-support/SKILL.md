@@ -446,14 +446,45 @@ headless 空桌面；`x11vnc` 直接 `X Error BadMatch`。
 `shot` 依然不行——那是给 agent 拿像素用的另一条路，依赖 compositor 的截图接口，
 和画面传输不是一回事。
 
-要彻底解决截图（含锁屏），只能切 X11：
+### 切到 X11 之后，整套工具全部恢复
+
+同一台机器、同一套 agent，只换会话类型，能力差别很大（实测数据）：
+
+| 能力 | GNOME Wayland | X11（ubuntu-xorg） |
+|---|---|---|
+| `shot` | ❌ `Can't open X display` / 27 KB 全黑 | ✅ **94 KB 真实画面** |
+| `windows` | ⚠️ 只列出 Xwayland 客户端 | ✅ **11 个窗口全部** |
+| 键鼠 | ⚠️ 只能操作 Xwayland 应用 | ✅ 全部 |
+| `paste` | ✅ wl-copy | ✅ xclip |
+| VNC | ❌ 见上文，无解 | ✅ x11vnc 可用 |
+| RDP | ✅ 要 keyring | ✅ |
+
+**不是工具不行，是 GNOME 的 Wayland 实现不提供这些接口**：`wlr-screencopy` 是 wlroots
+专有、`x11vnc` 要根窗口像素而 Xwayland 不给、`xdotool` 对原生 Wayland 窗口无效。
+agent 里那套工具本来就是为 X11 写的，**GNOME Wayland 是唯一让它们同时全部降级的会话**。
+
+**能选就选 X11**，三种做法从轻到重：
+
+```
+1. 登录界面右下角齿轮 → "Ubuntu on Xorg"      改一次，只影响这个用户
+2. /etc/gdm3/custom.conf 里 WaylandEnable=false  全局强制
+3. 换 XFCE / MATE 这类 X11 原生桌面            最彻底，但要重装桌面
+```
+
+第 1 种最省事，现场机器操作一次就够；第 2 种适合新部署，写进装机脚本。
+
+切过去之后 `is_wayland()` 返回 false，`shot` 走 scrot，`paste` 回落 xclip，**全自动，
+不用改任何配置**。
 
 ```bash
+# 全局强制 X11
 sudo sed -i 's/^#\?WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/custom.conf
 sudo systemctl restart gdm3
 ```
 
-切过去之后 grim 就别用了（走 scrot），`paste` 会自动从 wl-copy 回落 xclip。
+**判断会话类型必须以 `XDG_SESSION_TYPE` 为准**：X11 会话里 `/run/user/<uid>/wayland-0`
+常常是上一个 Wayland 会话留下的残骸，照着 socket 推断会让 grim 顶掉 scrot，截图反而
+失败（这个坑踩过，日志是 `grim 不可用 (failed to create display)`）。
 
 Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附加项。
 
