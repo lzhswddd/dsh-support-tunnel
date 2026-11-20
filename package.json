@@ -1,8 +1,8 @@
 {
   "name": "@local/support-tunnel",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
-  "description": "Control-side DSH plugin for a reverse tunnel: reach customer machines on customer networks through one inbound port, with per-account approval, SSH, file transfer, key/mouse control and VNC.",
+  "description": "Control-side DSH plugin for a reverse tunnel: reach every customer machine through one inbound port, with per-account approval and kit-scoped access. Ships its own operating skill so the model knows how to drive it rather than guessing. Tools cover SSH command execution with a dangerous-command guard, file transfer, activity audit, reboot, TCP port forwarding for VNC/RDP, and tunnel_ui for the customer's desktop agent (26 actions: windows, screenshots, click, OCR, clipboard, COM, and the app hub).",
   "keywords": [
     "dsh",
     "dsh-plugin",
