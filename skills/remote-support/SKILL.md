@@ -52,7 +52,36 @@ tunnel_list        # 永远先看：谁在线、端口、kitId、机器名、账
 | `tunnel_reboot` | 重启客户机，唯一能越过关机守卫的路径 |
 | `tunnel_disconnect` | 断开一台 kit 并释放端口 |
 
-`tunnel_download` 拉大文件要确认写完：截图 PNG 3 MB 时抢断会拿到半截（有 magic 没有 IEND）。
+## 传文件：用 scp，不要绕 agent
+
+**传文件一律用 `tunnel_upload` / `tunnel_download`。** 它们是 scp over 隧道，
+流式传输，几 MB 的截图和几十 MB 的安装包都能直接过。
+
+**不要用 `tunnel_ui action=exec` 加 base64 来传文件**，除非 scp 明确不通：
+
+| | `tunnel_upload`（scp） | agent exec + base64 |
+|---|---|---|
+| 大文件 | ✅ 流式，没有上限 | ❌ 膨胀 33%，而且命令行长度只有几十 KB |
+| 速度 | 快 | 慢，内容要过一遍 JSON 和 shell |
+| 二进制 | ✅ 原样 | ⚠️ 换行、编码都可能被改 |
+| 中文路径 | 可能有问题 | 一样有问题 |
+
+base64 只适合**几百字节的小文本**当兜底，而且写进去还要处理引号嵌套。
+
+**`tunnel_ui action=shot` 例外**：它已经把 PNG 自动拉回本地（返回里带 `localPath`），
+要看屏幕就直接读那个路径，别再 `tunnel_download` 一趟。
+
+### scp 报错不等于 scp 坏了
+
+`tunnel_upload` 报 `Permission denied (publickey)` 时，看着像传输坏了——
+**其实是账户问题**（agent 被 SYSTEM 拉起时上报 `NAME$`），和 `tunnel_exec` 同一个根因。
+配好 `clientUser` 两边一起恢复。**不要因为 scp 报错就改用 agent 传**，
+那只是把同一个账户问题换个地方踩，而且大文件根本传不了。
+
+### 大文件要确认写完
+
+`tunnel_download` 拉大文件时要验证完整性：截图 PNG 3 MB 时抢断会拿到半截
+（有 magic 没有 IEND）。
 
 ### 这两个工具不在本机开 ssh
 
