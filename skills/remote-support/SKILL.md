@@ -1,6 +1,6 @@
 ---
 name: remote-support
-description: 通过 TLS 隧道远程操作客户机（Windows/Linux）：执行命令、传文件、桌面控制、远程画面、重启。Use when the user asks to 远程支持/连客户机/看现场那台机器/在客户机上跑命令或截图/改客户机上的文件, when tunnel_list or tunnel_ui or tunnel_exec must be used, or when a machine is reached through the support stick (U 盘, kits\_stick). 覆盖 target 解析、九个工具的分工、桌面 agent 的 26 个动作、UltraVNC 远程画面、Linux 侧 systemd 部署和故障对照表。
+description: 通过 TLS 隧道远程操作客户机（Windows/Linux）：执行命令、传文件、桌面控制、远程画面、重启。Use when the user asks to 远程支持/连客户机/看现场那台机器/在客户机上跑命令或截图/改客户机上的文件, when tunnel_list or tunnel_ui or tunnel_exec must be used, or when a machine is reached through the support stick (U 盘, kits\_stick). 覆盖 target 解析、十三个工具的分工、后台长任务、桌面 agent 的 26 个动作、UltraVNC 远程画面、Linux 侧 systemd 部署和故障对照表。
 whenToUse: 需要远程操作客户现场机器时——查在线客户端、跑命令、上传下载文件、点鼠标键盘、看屏幕、重启客户机、排查"连上了但进不去"这类通道问题。
 ---
 
@@ -39,18 +39,51 @@ tunnel_list        # 永远先看：谁在线、端口、kitId、机器名、账
 | kit 名 | `target: "U盘"` | 一个 U 盘一套 kit，多台共挂 |
 | kitId | `target: "k5a1dad4e"` | 最精确 |
 
-## 九个工具
+## 十三个工具
 
 | 工具 | 用途 |
 |---|---|
 | `tunnel_list` | 在线列表和端口 |
 | **`tunnel_ui`** | **26 个动作（19 个桌面 + 7 个 agent 命令），见下** |
 | `tunnel_exec` | 在客户机跑命令，见下「在哪执行」 |
-| `tunnel_upload` / `tunnel_download` | 传文件 |
-| `tunnel_audit` | 读最近的连接/exec/传输/被拦命令记录，`limit` 默认 20 最多 200 |
+| `tunnel_upload` / `tunnel_download` | 传文件，见下 |
+| **`tunnel_stat`** | 查一个文件的 existence/size/mtime，Windows 还报**是否被占用** |
+| `tunnel_audit` | 读最近的活动记录，`limit` 默认 20 最多 200 |
 | **`tunnel_forward`** | 转发任意 TCP 端口给人用（VNC 5900 / RDP 3389 / Web 管理页）；`tunnel_vnc` 是它的别名 |
 | `tunnel_reboot` | 重启客户机，唯一能越过关机守卫的路径 |
 | `tunnel_disconnect` | 断开一台 kit 并释放端口 |
+| **`tunnel_job_output`** | 读 `background:true` 起的长任务：还在跑吗、输出到哪、真实退出码 |
+| **`tunnel_job_kill`** | 停掉那个长任务 |
+
+### 跑长命令：用 background，别让超时骗你
+
+`robocopy` 拷几万个文件、`pip install`、`tar` 打包几百 MB——**这些一跑就是几分钟**。
+前台调用撞上超时会返回 `The operation was aborted`，但那**不代表命令失败**，
+它可能已经跑完了，只是输出还没回来。
+
+```
+tunnel_exec { target, command, background: true }   → 立刻拿到 jobId
+tunnel_job_output { jobId }                          → running / exitCode / 输出
+tunnel_job_kill   { jobId }                          → 不想要了就停
+```
+
+后台模式下 `exitCode: 0` **只代表启动成功**，真正的结果在 `tunnel_job_output` 里。
+
+### 非 0 退出码有时是成功
+
+`robocopy` 复制成功返回 **1**，diff 类工具发现差异也返回 **1**。
+给它们一个 `accept_exit_codes: [0, 1]`，结果里会带 `accepted: true`，
+免得把成功当失败然后又去"修"一遍。
+
+### 上传前先看目标
+
+不知道目标在不在、多大、是不是被 Excel 占着——用 `tunnel_stat`，别拼一段 PowerShell。
+`locked: true` 就是「这个文件现在写不进去」，比等 scp 报一句 `Failure` 强。
+
+### 命令走命令行，传文件走 scp
+
+命令行有长度上限（几千字符就会失败）。**要写文件内容就用 `tunnel_upload`**，
+不要切成几十块 base64 塞进命令行——那既慢又容易在半路断掉重传。
 
 ## 传文件：用 scp，不要绕 agent
 
@@ -120,6 +153,22 @@ base64 只适合**几百字节的小文本**当兜底，而且写进去还要处
 
 `tunnel_upload` / `download` / `reboot` 走另一条路（本机 ssh/scp 直连 loopback），
 所以它们和 exec 的失败原因可能不同，别用同一套假设。
+
+### GUI 程序别用 tunnel_exec 驱动
+
+`tunnel_exec` 落在 **session 0，没有桌面**。
+
+```
+New-Object -ComObject PowerPoint.Application     ← 成功
+$app.Presentations.Open("x.pptx")                ← "PowerPoint could not open the file"
+```
+
+看起来像**文件损坏**，其实只是这个 session 没有交互式桌面。现场据此误判过一次，
+带着"文件是坏的"这个结论绕了很远。
+
+现在 `tunnel_exec` **直接拒绝**驱动 Office/COM 的命令并说明原因——识别
+`New-Object -ComObject`、`GetActiveObject`、`GetTypeFromProgID` 和常见 ProgID。
+**要碰用户开着的软件，一律 `tunnel_ui action=exec` 或 `action=com`。**
 
 ### 上报的账户可能是机器账户
 
@@ -605,6 +654,12 @@ Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附�
 | **`Permission denied (publickey)` 但 key 是对的、端口也通** | **agent 上报了机器账户 `NAME$`**（被 SYSTEM 任务拉起）—— Windows 不给这类账户交互式登录权 | 配 `cordis.patch.yml` 的 `clientUser`；判断依据是 `tunnel_list` 里 `user` 以 `$` 结尾 |
 | **本机找不到 ssh 进程** | `tunnel_exec` / `tunnel_ui` 由**服务端**执行，本机只发 HTTP | 正常。要排查去服务端，本机翻了也是空的 |
 | 私钥报「拒绝访问」或 `UNPROTECTED PRIVATE KEY FILE` | 导入的 kit 带着继承 ACL（zip 解压、跨机复制） | 插件启动时已自动收紧；手工可 `icacls <key> /reset` 再 `/inheritance:r /grant:r "<user>:(F)" /grant:r "SYSTEM:(F)"` |
+| `The operation was aborted` 但命令其实跑完了 | 前台调用撞上通道超时，超时≠失败 | 长命令改用 `background: true`，用 `tunnel_job_output` 拿真实结果 |
+| 中文输出变成乱码 | 以前是 PowerShell 的 OEM 代码页 | 已修（脚本开头设 UTF-8）；cmd 走 `chcp 65001`。还乱就 `[Console]::OutputEncoding` 自己再设一次 |
+| stderr 里全是 `#< CLIXML` | PowerShell 的 progress 流被序列化 | 已修（`$ProgressPreference=SilentlyContinue`）。若仍出现，是客户机上的旧 agent |
+| `tunnel_audit` 返回空 | remote 模式以前没有本地日志 | 已修，本地落 `%TEMP%\support-tunnel-audit.jsonl` |
+| 上传报「目标在远端更新」 | **不是故障**，是覆盖保护 | 确认自己这份该赢就带 `overwrite: true`；否则换 `remotePath` |
+| scp 报 `dest open ... Failure` | 目录不存在 / 文件被占用 / 权限 / 磁盘满，scp 全说成 Failure | 已改为失败后 stat 目标并说明具体原因；也可自己先跑 `tunnel_stat` |
 | **截图看着不对** | 客户机可能有 RDP 会话占了某块屏；且 `windows` 的坐标和截图像素在 DPI 缩放下对不上 | **用 `windows` 枚举核对，别只信图** |
 
 ## 远程更新客户端（不用人碰机器）
