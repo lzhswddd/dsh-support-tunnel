@@ -47,7 +47,7 @@ tunnel_list        # 永远先看：谁在线、端口、kitId、机器名、账
 | **`tunnel_ui`** | **26 个动作（19 个桌面 + 7 个 agent 命令），见下** |
 | `tunnel_exec` | 在客户机跑命令，见下「在哪执行」 |
 | `tunnel_upload` / `tunnel_download` | 传文件，见下 |
-| **`tunnel_stat`** | 查一个文件的 existence/size/mtime，Windows 还报**是否被占用** |
+| **`tunnel_stat`** | 查一个文件的 existence/size/mtime，Windows 还报 `locked`（**真布尔**；非 Windows 上这个字段不存在，别把"缺省"当 false） |
 | `tunnel_audit` | 读最近的活动记录，`limit` 默认 20 最多 200 |
 | **`tunnel_forward`** | 转发任意 TCP 端口给人用（VNC 5900 / RDP 3389 / Web 管理页）；`tunnel_vnc` 是它的别名 |
 | `tunnel_reboot` | 重启客户机，唯一能越过关机守卫的路径 |
@@ -84,6 +84,28 @@ tunnel_job_kill   { jobId }                          → 不想要了就停
 
 命令行有长度上限（几千字符就会失败）。**要写文件内容就用 `tunnel_upload`**，
 不要切成几十块 base64 塞进命令行——那既慢又容易在半路断掉重传。
+
+### cmd 装不了中文
+
+```
+tunnel_exec { shell: "cmd", command: "echo 中文" }
+→ 拒绝：cmd 下含非 ASCII 的命令必然乱码
+```
+
+不是没修，是修不了。命令按 UTF-8 字节经 ssh 送到 sshd，而 cmd 拆分同一行里的参数时
+用的是它自己的 936 代码页；`chcp 65001` 只影响**之后**新启动的命令，改不了它所在的那
+一行。实测 `chcp & echo test-utf8-中文` 会打印 `Active code page: 65001`，然后照样乱码。
+
+**含中文就用 `shell: "powershell"`**（不指定时 Windows 默认就是它）。纯 ASCII 的 cmd
+命令不受影响，`dir` 这类**输出**里的中文也是正常的——坏的只有输入侧。
+
+### `tunnel_list` 里看 loginUser，不是 user
+
+`user` 是客户端上报的原值，机器被 SYSTEM 任务拉起时它是 `VISIONFRAME$` 这种计算机账户
+——**登不进去**。真正用来登录的是 `loginUser`。
+
+`sshCommand` 已经按 `loginUser` 重写过，可以直接用；`user` 和 `loginUser` 不一样时，
+说明这台机器上 agent 不是用户会话拉起来的，这是正常的，不是故障。
 
 ## 传文件：用 scp，不要绕 agent
 
@@ -686,7 +708,8 @@ Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附�
 | stderr 里全是 `#< CLIXML` | PowerShell 的 progress 流被序列化 | 已修（`$ProgressPreference=SilentlyContinue`）。若仍出现，是客户机上的旧 agent |
 | `tunnel_audit` 返回空 | remote 模式以前没有本地日志 | 已修，本地落 `%TEMP%\support-tunnel-audit.jsonl` |
 | 上传报「目标在远端更新」 | **不是故障**，是覆盖保护 | 确认自己这份该赢就带 `overwrite: true`；否则换 `remotePath` |
-| scp 报 `dest open ... Failure` | 目录不存在 / 文件被占用 / 权限 / 磁盘满，scp 全说成 Failure | 已改为失败后 stat 目标并说明具体原因；也可自己先跑 `tunnel_stat` |
+| scp 报 `dest open ... Failure` 或 `No such file or directory` | 目录不存在 / 文件被占用 / 权限 / 磁盘满，scp 全说成一句话 | 已改为失败后 stat 目标并说明具体原因（本机 scp 和服务端两条分支都有）；也可自己先跑 `tunnel_stat` |
+| `cmd` 下中文变问号 | 输入侧的代码页问题，`chcp` 改不了同一行的参数 | 已改为直接拒绝；含中文就用 `shell: "powershell"` |
 | **截图看着不对** | 客户机可能有 RDP 会话占了某块屏；且 `windows` 的坐标和截图像素在 DPI 缩放下对不上 | **用 `windows` 枚举核对，别只信图** |
 
 ## 远程更新客户端（不用人碰机器）
