@@ -151,6 +151,33 @@ base64 只适合**几百字节的小文本**当兜底，而且写进去还要处
   以前不带这个字段，控制端算好的账户（把 `NAME$` 换成真实用户）到服务端就丢了，
   症状是「改控制端怎么都不生效」——这个坑踩过一次，绕了很久
 
+### 改代码前先确认改哪一侧
+
+**`tunnel_exec` / `tunnel_ui` 的命令由服务端拼，不是控制端。** 想改命令怎么发出去，
+改 `tools.js` 是白改——那里的 `buildRemoteCommand` 在这条路径上**根本不会被调用**。
+
+| 想改什么 | 改哪 |
+|---|---|
+| **命令拼装**：编码、引号、shell 选择、cwd、preamble | `tunnel-server/lib/kit-actions.js` 的 `remoteArgv()` |
+| **登录账户** | 两侧都要：控制端 `resolveSession`/`sshBase` 算出真实账户 → 请求体带 `user` → 服务端优先用请求里的 |
+| **工具参数、返回结构、错误文案** | `support-tunnel/lib/tools.js` |
+| **上传/下载怎么传** | 控制端 `remote.js`（走服务端 `/kit/file`）或 `tools.js`（本机 scp 回退） |
+| **VNC/RDP 转发** | `support-tunnel/lib/vnc.js`（本机 `ssh -L`） |
+
+**改完必须重启对应的那一侧**：改 `kit-actions.js` 要重启 `_tunnel_server`，
+改 `tools.js` / `index.js` 要重启 DSH。**只重启一边等于没改**——代码是对的，
+跑的还是旧的。
+
+**这个错犯过两次，都是同一个误解**：
+
+```
+user 账户覆盖   写在 tools.js      → 服务端没收到，Permission denied 照旧
+UTF-8 / CLIXML  写在 tools.js      → 服务端没收到，中文照旧乱码
+```
+
+两次都是「改完以为好了，实测一模一样」。改这类东西之前，先问一句：
+**这条命令最后是谁在拼？**
+
 `tunnel_upload` / `download` / `reboot` 走另一条路（本机 ssh/scp 直连 loopback），
 所以它们和 exec 的失败原因可能不同，别用同一套假设。
 
