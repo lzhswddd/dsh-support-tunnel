@@ -328,7 +328,7 @@ agent 在交互式会话。**凡是要碰"用户已经打开的软件"，用 `tu
 | 批量 | `batch`(actions) |
 | 浏览器 | `browser`(url, isolated) `browser_close`(profileDir) |
 
-### 一串动作：用 batch，别连着发
+### 一串动作：用 batch
 
 ```
 tunnel_ui { action: "batch", actions: [
@@ -338,15 +338,103 @@ tunnel_ui { action: "batch", actions: [
 ] }
 ```
 
-一次往返，而且**中间插不进别人的动作**。分开发三次的话，第二次和第三次之间
-可能被另一个调用方挤进来——点的是这个窗口，字打到另一个窗口去。
-
-batch 无条件走 serial 队列，所以整批一起排队、一起执行。最多 20 步。
+一次往返，比分开发三次省事。**但 batch 不是事务**——端侧把 actions 解析成一步步，
+每一步各自排队或放行，两步之间别的调用可以插进来。要保证"点这个再打字"不被打断，
+靠的是**同一个窗口的动作在同一条车道上排队**，不是靠批次本身。
 
 **默认第一个失败就停**：点击没命中，后面的 `type` 会打到别处去。要跑完剩下的传
-`continueOnError: true`。返回里 `stoppedEarly` 说明有没有提前停。
+`continueOnError: true`。返回里 `stoppedEarly` + `stopReason` 说明为什么停。
 
 不支持嵌套 batch。
+
+#### 两种模式：20 步以内同步，超过进队列
+
+```
+mode: "inline"   当场跑完，直接返回全部结果
+mode: "job"      端侧建作业、起线程，立刻返回 jobId
+省略              ≤20 步 inline，>20 步 job
+```
+
+作业模式才有中间状态可看：
+
+```
+tunnel_ui { action: "batch", mode: "job", actions: [...] }
+→ { jobId: "a1b2c3", state: "running", index: 0, total: 300 }
+
+tunnel_ui { action: "batch_status", jobId: "a1b2c3" }
+→ { state: "running", index: 47, total: 300, done: 47,
+    currentAction: "drag", currentKind: "ui", currentLane: "queued",
+    elapsedMs: 8210, results: [...] }
+
+tunnel_ui { action: "batch_cancel", jobId: "a1b2c3" }
+→ { cancelling: true, index: 47, total: 300 }
+```
+
+`batch_status` 不带 jobId 就列出所有在跑的。`batch_cancel` **在步骤之间生效**，
+正在执行的那一步不会被打断。
+
+#### 跑太久会停在断点上
+
+一场 batch 会一直占着端侧的通道。步数不是约束，**时间是**：
+
+```
+budgetSeconds    默认 35，上限 300
+超预算 → state: "budget"，如实给 nextIndex
+```
+
+```
+{ "stoppedEarly": true, "stopReason": "budget", "nextIndex": 120 }
+```
+
+`nextIndex` 是从哪一步断的——**从它继续，不要重放已经做完的**。
+`stopReason` 有三种：`none` / `error` / `budget`。
+
+### 串行还是并行：由你决定，不用猜
+
+每个动作和每个 batch 步骤都可以带 `serial`：
+
+```
+serial: true    强制排队
+serial: false   强制放行
+省略            按动作类型自动判断
+```
+
+自动判断的规则是端侧的分类：
+
+```
+ui           碰光标/键盘/COM/前台状态   → 排队
+background   只在旁边读数据或跑命令      → 放行
+inline       查队列自身状态             → 连队列都不等
+```
+
+**为什么要能覆盖**：分类是工具对"这动作碰什么"的猜测，而你知道自己想干什么。
+
+- 两条后台动作必须互斥（同一份文件写两次、两条互相干扰的 `exec`）→ `serial: true`。
+  它们没有 hwnd，会一起排在 `global` 这条道上。
+- 已知互不影响的动作想并行 → `serial: false`。
+
+每个结果都告诉你实际发生了什么：
+
+```json
+{ "ok": true, "taskKind": "background", "lane": "direct" }
+```
+
+`taskKind` 是分类，`lane` 是它到底排了队还是一路放行。**"排没排队"是可以问的，
+不用猜。**
+
+### 看端侧现在在干什么
+
+```
+tunnel_ui { action: "status" }
+```
+
+```json
+"lanes": { "984040": { "busy": 1, "action": "click", "heldMs": 1832, "by": "serial0" } },
+"batchJobs": [ { "jobId": "a1b2c3", "index": 47, "total": 300 } ],
+"taskKinds": { "ui": [...], "background": [...], "inline": [...] }
+```
+
+`lanes` 说清楚每条道被谁占着、占了多久——一个动作卡住时，`heldMs` 一直涨的就是它。
 
 ### 浏览器：默认开一个干净的
 
