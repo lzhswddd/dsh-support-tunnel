@@ -383,7 +383,79 @@ Linux 上 agent 是 root，浏览器会**降权到会话用户**再起——root
 物理像素。`screen: 0` 主屏、`1` 第二块、以此类推，每块屏从自己左上角算。
 给了 `hwnd` 就是**窗口客户区相对坐标**，这种情况下不用操心屏幕偏移。
 
+**`hwnd` 是必须的**：不传它，`x/y` 会被当成绝对坐标。画图那次拖了十几次什么都没画出来，
+就是因为插件白名单漏了 `hwnd`，坐标静默变成了绝对坐标。传了之后实测：画图在 `(60,40)`，
+窗口内 `(500,500)` → 屏幕 `(560,540)` ✓
+
 **但不要靠截图验证界面**——见故障表最后一行。
+
+### 点准的唯一办法：mark + ref，不要估像素
+
+**永远不要从截图里读坐标。** 实测过：我看图估「画笔」按钮在 `(505,137)`，UIA 报的是
+`(430..496, 115..215)` —— 偏 42 像素，点在按钮外的空白处。工具栏那么密，42 像素就是
+另一个控件。
+
+正确做法是让工具把编号画在图上：
+
+```
+tunnel_ui { action: "state", target, mark: true }
+```
+
+返回里 `controls` 每一项带 `n`（编号）、`ref`、以及 UIA 的精确矩形，画面上每个可交互控件
+都有红框和号码：
+
+```json
+{ "controls": [
+    { "n": 27, "ref": "e27", "text": "画笔", "type": 50013,
+      "x": 691, "y": 221, "w": 40, "h": 55 },
+    { "n": 36, "ref": "e36", "text": "红色", "type": 50007, ... } ] }
+```
+
+然后 `click { ref: "e27" }` —— 坐标由 UIA 给，不需要你算。
+
+`mark: true` 只挑能点的（Button / Edit / ListItem / TabItem / CheckBox / ComboBox /
+Hyperlink / MenuItem / RadioButton / Slider / TreeItem / DataItem / SplitButton），
+一个典型的画图窗口是 40 个。默认上限 40，用 `limit` 调。
+
+### UIA 优先：不碰光标也不抢焦点
+
+`click { ref }` 会先试 `Invoke` → `SelectionItem.Select` → `Toggle`，都不支持才退回真实
+点击。`type { ref }` 会先试 `ValuePattern.SetValue`。
+
+好处不只是快——**这些路径不动光标、不抢前台**，所以不同窗口的这类动作可以并行。
+返回里的 `mode` 说明走了哪条：
+
+```
+mode: "uia" + pattern: "invoke"     语义动作
+mode: "uia-setvalue"                ValuePattern 直接赋值
+mode: "physical"                    退回真实点击
+mode: "unicode"                     SendInput 注入字符
+```
+
+`uia-setvalue` 是**整段替换**。所以只有控件原本为空、或显式传 `replace: true` 时才用——
+不然会把用户已经填好的内容抹掉。
+
+### 打字：不受输入法影响
+
+`type` 用 `SendInput` + `KEYEVENTF_UNICODE` 直接注入码位，**绕开键盘布局和输入法**。
+
+以前的实现走 `VkKeyScan` + `keybd_event`，中文输入法开着时打 `abc` 出来的是 `a'b'cabc`
+——输入法把它当拼音在分音节，组合串和上屏文本一起出现在屏幕上。这个靠调时序修不了，
+键根本没到应用。
+
+所以：**中英文都直接用 `type`，不要为了"绕开输入法"改用剪贴板**。
+
+### 判断"这一下有没有生效"：changed
+
+改变状态的动作会带 `changed`（真变化 `true`，没变化 `false`），拿不到画面时带
+`changedUnknown` 和原因——**省略和"没变"在调用方看来是一样的**，所以不能说的时候要说明。
+
+两个已知边界：
+
+- **窗口被遮挡时不可信**：像素判据读的是屏幕上看到的东西，窗口在后面就抓到前面的窗口，
+  会给出 `false`（画图那次选中画笔就是真实的 `false`）
+- **贵**：一次观察最多 3 秒。批量操作里用 `observe: false` 关掉，最后再 `state` 一次看结果。
+  实测 10 段拖拽开了观察是 30 秒，关掉是 3.3 秒
 
 ### hub 里的应用
 
