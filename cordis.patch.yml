@@ -1,6 +1,6 @@
 - insert:
     - id: support-tunnel
-      name: '@local/support-tunnel'
+      name: 'dsh-support-tunnel'
       config:
         # This plugin is the control side only. The tunnel endpoint runs as a
         # separate process — see ../tunnel-server/README.md.

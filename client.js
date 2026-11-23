@@ -6,7 +6,7 @@
  * POST /api/support-tunnel/export, both owner-only.
  */
 window.__ModuleLoader__.load({
-  id: '@local/support-tunnel',
+  id: 'dsh-support-tunnel',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
