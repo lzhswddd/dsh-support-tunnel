@@ -200,6 +200,39 @@ UTF-8 / CLIXML  写在 tools.js      → 服务端没收到，中文照旧乱码
 两次都是「改完以为好了，实测一模一样」。改这类东西之前，先问一句：
 **这条命令最后是谁在拼？**
 
+### 改完必须重启，`applied` 不等于生效
+
+`plugin_manager install_bundle` 返回 `application: applied` 只说明**文件和配置换了**。
+ESM 按路径缓存模块，**同一路径重装不会重新求值**——跑的仍是旧代码。
+
+实测过一次：同一个 bug 连改四版（条件赋值 → 出口净化 → 硬编码返回 → 加审计探针），
+每次都 `applied`，每次现象一模一样。硬编码返回值都报错、审计探针一条没留下，
+才终于明白那四版代码一版都没被加载过。重启之后第一次就对了。
+
+**发布流程**（正式 tarball 安装，包名 `dsh-support-tunnel`）：
+
+```
+1. 改 package.json 的 version
+2. npm pack                                     → dsh-support-tunnel-<ver>.tgz
+3. plugin_manager install_bundle <tgz 绝对路径>
+4. 重启 DSH                                     ← 省不掉
+```
+
+改名那一刻是唯一的例外：新包名 = 新路径 = 新缓存键，装完立即生效。但下次同包名升级
+又要重启，别把这个巧合当规律。
+
+`link:` 安装也别指望热重载：HMR 的 `ignored` 默认含 `**/node_modules`，而两种安装方式
+都把插件放在那下面。它管的是 profile 配置和少数被 watch 的路径，不是插件代码。
+
+### 改源码只能用文件工具，不能用 PowerShell 的读写 cmdlet
+
+`Get-Content -Raw` 不给 `-Encoding` 时，PowerShell 5.1 按 ANSI（中文机器上是 GBK）读，
+`[IO.File]::WriteAllText(..., UTF8)` 再按 UTF-8 写回去——**整份文件的中文注释全毁**。
+文件里不会有 U+FFFD，只是每个汉字都变成了另一串合法字符，看着像编码"没问题"。
+
+用 `edit` / `write` 工具改，它们按 UTF-8 处理。真要用 PowerShell 批处理，读写两侧都显式
+给 `[Text.UTF8Encoding]::new($false)`。
+
 `tunnel_upload` / `download` / `reboot` 走另一条路（本机 ssh/scp 直连 loopback），
 所以它们和 exec 的失败原因可能不同，别用同一套假设。
 
