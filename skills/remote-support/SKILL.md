@@ -325,7 +325,7 @@ agent 在交互式会话。**凡是要碰"用户已经打开的软件"，用 `tu
 | 鼠标 | `move` `click` `dblclick` `rightclick` `drag` `wheel` |
 | 键盘 | `type`(text) `key`(SendKeys 语法) `paste`(text) |
 | 取画面 | `shot` `find` `ocrText` |
-| 批量 | `batch`(actions) |
+| 批量 | `batch`(actions, mode, serial) `batch_status`(jobId) `batch_cancel`(jobId) |
 | 浏览器 | `browser`(url, isolated) `browser_close`(profileDir) |
 
 ### 一串动作：用 batch
