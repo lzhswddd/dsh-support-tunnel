@@ -1,6 +1,6 @@
 {
   "name": "dsh-support-tunnel",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "type": "module",
   "description": "Control-side DSH plugin for a reverse tunnel: reach every customer machine through one inbound port, with per-account approval and kit-scoped access. Ships its own operating skill so the model knows how to drive it rather than guessing. Thirteen tools: SSH command execution with a dangerous-command guard and background jobs for long runs, file transfer that refuses to overwrite a newer remote copy, tunnel_stat for size/mtime/lock, activity audit, reboot, TCP port forwarding for VNC/RDP, and tunnel_ui for the customer's desktop agent (26 actions: windows, screenshots, click, OCR, clipboard, COM, and the app hub).",
   "keywords": [
