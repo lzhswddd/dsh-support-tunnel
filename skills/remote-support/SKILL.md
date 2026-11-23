@@ -44,7 +44,7 @@ tunnel_list        # 永远先看：谁在线、端口、kitId、机器名、账
 | 工具 | 用途 |
 |---|---|
 | `tunnel_list` | 在线列表和端口 |
-| **`tunnel_ui`** | **26 个动作（19 个桌面 + 7 个 agent 命令），见下** |
+| **`tunnel_ui`** | **29 个动作（22 个桌面 + 7 个 agent 命令），见下** |
 | `tunnel_exec` | 在客户机跑命令，见下「在哪执行」 |
 | `tunnel_upload` / `tunnel_download` | 传文件，见下 |
 | **`tunnel_stat`** | 查一个文件的 existence/size/mtime，Windows 还报 `locked`（**真布尔**；非 Windows 上这个字段不存在，别把"缺省"当 false） |
@@ -325,6 +325,51 @@ agent 在交互式会话。**凡是要碰"用户已经打开的软件"，用 `tu
 | 鼠标 | `move` `click` `dblclick` `rightclick` `drag` `wheel` |
 | 键盘 | `type`(text) `key`(SendKeys 语法) `paste`(text) |
 | 取画面 | `shot` `find` `ocrText` |
+| 批量 | `batch`(actions) |
+| 浏览器 | `browser`(url, isolated) `browser_close`(profileDir) |
+
+### 一串动作：用 batch，别连着发
+
+```
+tunnel_ui { action: "batch", actions: [
+  { action: "click", x: 120, y: 88 },
+  { action: "type",  text: "192.168.1.10" },
+  { action: "key",   keys: "{ENTER}" }
+] }
+```
+
+一次往返，而且**中间插不进别人的动作**。分开发三次的话，第二次和第三次之间
+可能被另一个调用方挤进来——点的是这个窗口，字打到另一个窗口去。
+
+batch 无条件走 serial 队列，所以整批一起排队、一起执行。最多 20 步。
+
+**默认第一个失败就停**：点击没命中，后面的 `type` 会打到别处去。要跑完剩下的传
+`continueOnError: true`。返回里 `stoppedEarly` 说明有没有提前停。
+
+不支持嵌套 batch。
+
+### 浏览器：默认开一个干净的
+
+```
+tunnel_ui { action: "browser", url: "https://example.com" }            # 隔离
+tunnel_ui { action: "browser", url: "https://example.com", isolated: false }  # 用他的
+```
+
+`isolated` 默认 **true**：起一个用完就扔的 profile，没有 cookie、没有历史、不碰用户的
+任何东西。**翻客户已登录的浏览器和打开一个页面是两回事**，所以安全的那条是默认值，
+要用他现有登录态才显式传 `false`。
+
+返回里有 `profileDir`，用完销毁：
+
+```
+tunnel_ui { action: "browser_close", profileDir: "C:\\ProgramData\\FieldSupport\\browsers\\run-xxxx" }
+```
+
+不销毁的话那个目录会一直留着（几十 MB）。`browser_close` 只接受 agent 自己目录下的
+路径，传别的会被拒。
+
+Linux 上 agent 是 root，浏览器会**降权到会话用户**再起——root 起 Chrome 要么被拒，
+要么得关沙箱。
 
 两个省事的细节：
 
@@ -428,7 +473,7 @@ Linux 是整屏截，窗口被挡住就截到挡住它的东西——先 `raise`
 ├── update-agent.ps1        远程热更新（stage / apply / rollback）
 ├── _launch.vbs             无控制台启动 GUI
 ├── app.ico / _make-icon.py GUI 图标及其生成脚本
-├── session1-agent.py       桌面 agent（26 个动作）
+├── session1-agent.py       桌面 agent（29 个动作）
 ├── hub.py                  hub 加载器
 ├── sw.py                   SolidWorks 命令行工具
 ├── fs-mcp.py               MCP 适配器（把 agent 暴露成 MCP 工具）
