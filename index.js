@@ -264,7 +264,12 @@ export function apply(ctx, config) {
   // headless profile has no webServer, and the tunnel tools still work there.
   ctx.inject(['webServer'], (webCtx) => {
     if (stopped) return
-    return registerUiRoutes(webCtx, backend, settings, vnc, remoteVnc)
+    return registerUiRoutes(webCtx, backend, settings, vnc, remoteVnc, {
+      // 界面上的「切换服务器」用它把新地址写回 profile。configEditor 是 DSH 的服务，
+      // entry 标识本插件那一行；两者缺一就不能保存，界面会说明而不是假装成功。
+      entry: ctx.fiber?.entry,
+      configEditor: ctx.get('configEditor'),
+    })
   })
 
   // Ship the operating knowledge with the tools it describes, and let the model pull

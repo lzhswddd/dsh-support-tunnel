@@ -131,6 +131,10 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [copied, setCopied] = useState('');
       const [sshBusy, setSshBusy] = useState('');
+      const [serverInfo, setServerInfo] = useState(null);
+      const [serverDraft, setServerDraft] = useState('');
+      const [serverBusy, setServerBusy] = useState(false);
+      const [serverNotice, setServerNotice] = useState('');
       const [vncBusy, setVncBusy] = useState('');
       const [vncNotice, setVncNotice] = useState(null);
       // Which kit note is being edited, and the draft text.
@@ -215,6 +219,51 @@ window.__ModuleLoader__.load({
           setBusy(false);
         }
       }, [name, server, port, clientUser, load]);
+
+      // 当前连的服务器。GET 拿显示值，POST 改地址——改完插件会重启好让后端用新地址重建，
+      // 所以响应里说的只是"已提交"，真正的结果要看工具能不能连上。
+      const loadServer = useCallback(async () => {
+        try {
+          const response = await fetch(`${API}/server`, { credentials: 'same-origin' });
+          const data = await response.json().catch(() => ({}));
+          if (data && data.ok) {
+            setServerInfo(data);
+            setServerDraft(data.remoteUrl || '');
+          }
+        } catch {
+          // 服务器信息只是显示用，读不到不影响隧道本身
+        }
+      }, []);
+
+      const switchServer = useCallback(async () => {
+        const remoteUrl = String(serverDraft || '').trim();
+        if (!remoteUrl) {
+          setServerNotice('先填一个地址');
+          return;
+        }
+        setServerBusy(true);
+        setServerNotice('');
+        try {
+          const response = await fetch(`${API}/server`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ remoteUrl }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || !data.ok) {
+            setServerNotice(data.error || `HTTP ${response.status}`);
+          } else {
+            setServerNotice(data.hint || '已提交，插件正在重启');
+          }
+        } catch (err) {
+          setServerNotice(`切换失败：${err && err.message ? err.message : '网络错误'}`);
+        } finally {
+          setServerBusy(false);
+        }
+      }, [serverDraft]);
+
+      useEffect(() => { loadServer(); }, [loadServer]);
 
       const copy = useCallback(async (text, tag) => {
         try {
@@ -327,6 +376,43 @@ window.__ModuleLoader__.load({
       const hasViewer = (kitId) => vncList.some((entry) => entry.kitId === kitId);
 
       return h('div', { style: S.wrap },
+        // 服务器地址：换一台隧道服务器就在这里改。保存走 configEditor，插件会重启
+        // 让后端用新地址重建——所以提示写的是"正在重启"，不是"已生效"。
+        h('div', { style: { ...S.card, marginBottom: 14 } },
+          h('h2', { style: S.h2 }, '服务器'),
+          h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 } },
+            h('input', {
+              value: serverDraft,
+              onChange: (e) => setServerDraft(e.target.value),
+              placeholder: 'https://127.0.0.1:24444',
+              spellCheck: false,
+              style: {
+                flex: 1,
+                fontSize: 12,
+                padding: '6px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--dsw-alias-border-secondary, #444)',
+                background: 'transparent',
+                color: 'inherit',
+              },
+            }),
+            h('button', {
+              style: {
+                ...S.button,
+                padding: '6px 14px',
+                fontSize: 12,
+                cursor: serverBusy || (serverInfo && !serverInfo.canEdit) ? 'not-allowed' : 'pointer',
+                opacity: serverBusy || (serverInfo && !serverInfo.canEdit) ? 0.5 : 1,
+              },
+              disabled: serverBusy || Boolean(serverInfo && !serverInfo.canEdit),
+              onClick: switchServer,
+            }, serverBusy ? '切换中…' : '切换')),
+          h('div', { style: { ...S.hint, marginTop: 6 } },
+            serverNotice
+              ? serverNotice
+              : serverInfo && serverInfo.canEdit
+                ? '切换后插件会重启，工具和远程画面都会连到新服务器。'
+                : '这个 profile 不能保存配置，只能在 cordis.patch.yml 里改 remoteUrl。')),
         h('div', { style: S.card },
           h('h2', { style: S.h2 }, '隧道状态'),
           loadError
