@@ -415,7 +415,41 @@ tunnel_ui { action: "state", target, mark: true }
 
 `mark: true` 只挑能点的（Button / Edit / ListItem / TabItem / CheckBox / ComboBox /
 Hyperlink / MenuItem / RadioButton / Slider / TreeItem / DataItem / SplitButton），
-一个典型的画图窗口是 40 个。默认上限 40，用 `limit` 调。
+一个典型的画图窗口是 45 个。默认上限 40，用 `limit` 调。
+
+**同时还会生成一张 mask 图**（返回里的 `mask`）：
+
+```
+原图   控件上叠红框 + 编号，标签有碰撞回避
+mask   黑底，每个控件填成一整块独立颜色，号码写在块中央
+```
+
+工具栏里相邻控件只隔 8 像素，原图上红框边框贴在一起，看图容易指错；mask 里每个控件
+是不相连的色块，"我要那个色块"就没有歧义了。`mask.legend` 给出号码 → 颜色 → ref：
+
+```json
+{ "n": 27, "ref": "e27", "text": "画笔", "color": "#4880ff" }
+```
+
+### 滚动和缩放：用 scroll，不要用 wheel 猜
+
+`wheel` 是开环的——发多少个 notch、实际滚了多远，调用方拿不到。画图里
+`delta: 480` 直接把整张图滚出视野。
+
+用 `scroll`，它走 UIA ScrollPattern，**前后位置都报**：
+
+```
+scroll { hwnd, read: true }            只看当前在哪
+scroll { hwnd, vertical: 0 }           到顶
+scroll { hwnd, vertical: 100 }         到底
+→ { scrollBefore: {vertical: 84.8}, scrollAfter: {vertical: 100},
+    progress: { vertical: { reached: true, steps: 2, landed: 100 } } }
+```
+
+`reached: false` 就说明没到位，`landed` 告诉你停在哪儿。
+
+`wheel { ctrl: true }` 是缩放。**缩放级别 UIA 读不到**，所以它只返回
+`zoomRequested: true`，要确认结果得再 `shot` 一次。
 
 ### UIA 优先：不碰光标也不抢焦点
 
