@@ -224,6 +224,20 @@ ESM 按路径缓存模块，**同一路径重装不会重新求值**——跑的
 `link:` 安装也别指望热重载：HMR 的 `ignored` 默认含 `**/node_modules`，而两种安装方式
 都把插件放在那下面。它管的是 profile 配置和少数被 watch 的路径，不是插件代码。
 
+### 装完要不要重启，看改的是哪一层
+
+两种都要**重新打包安装**——profile 读的是 `node_modules` 里的副本，不是工作目录。
+区别只在装完之后那一步：
+
+| 改了什么 | 装完要重启吗 | 为什么 |
+|---|---|---|
+| `lib/*.js`、`index.js` | **要** | ESM 按路径缓存模块，同路径重装不会重新求值 |
+| `skills/*.md` | **不要** | skill provider 按 mtime 读文件，副本换了就读到新的 |
+| `client.js`（Web 端） | 看情况 | 要重建客户端 bundle；`pnpm run dev:web` 在跑时会自动重载 |
+
+所以只改 skill 文案时，bump 一个小版本、pack、install 就结束了，不用打断会话。
+改 `lib/` 里任何一个 `.js` 就必须重启，没有例外。
+
 ### 改源码只能用文件工具，不能用 PowerShell 的读写 cmdlet
 
 `Get-Content -Raw` 不给 `-Encoding` 时，PowerShell 5.1 按 ANSI（中文机器上是 GBK）读，
