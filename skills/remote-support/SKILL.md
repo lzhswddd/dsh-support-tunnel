@@ -605,6 +605,9 @@ solidworks   8 个操作：version open info export rebuild configs activate clo
 | `ocrText` | ✅ | ⚠️ 要 tesseract，且**截图那一步在 GNOME Wayland 下拿不到画面** |
 | `stop` / `restart:true` | ✅ 计划任务 | ✅ hold 标记，见下 |
 | 截图 | PrintWindow：**被挡住、最小化都能截**，可只截某个窗口 | grim/scrot 截屏幕，窗口被挡就截到挡它的东西 |
+| `mark` / `mask` | ✅ UIA 走树，编号画在框内 | ✅ 2026-11-24 起可用（走降权子进程查 AT-SPI，见下） |
+| `canvas` | ✅ 视口矩形 + 滚动 + `home` 拉回原点 | ❌ 没有这个动作，用 `scroll` |
+| `display` | ❌ 只有当前会话 | ✅ 可指到别的 X 显示（`":2"`） |
 | 自启 | 5 个计划任务 | 4 个 systemd unit |
 | 守护 | `_fs_keeper` 每分钟 + `_fs_rescue` 更新兜底 | `Restart=always` + keeper timer，**没有 rescue** |
 | 远程画面 | UltraVNC，**锁屏可见可解锁** | **RDP**（gnome-remote-desktop，Wayland 下可用）；VNC 不行 |
@@ -638,6 +641,77 @@ sudo rm -f /run/fieldsupport-hold && sudo systemctl start fieldsupport-ui
 Linux 是整屏截，窗口被挡住就截到挡住它的东西——先 `raise` 或 `focus`。
 
 **锁屏画面两边都不要用 `shot` 去取**：Windows 那条路是 VNC（`tunnel_vnc` + 抓帧），Linux 没有这条路。
+
+### 指定 X 显示：`display`
+
+Linux 机器上可以并存多个显示：会话自己的 `:0`（可能是 Wayland）加上一个 X11 实验室 `:2`。
+`display` 让**这一条请求**打到指定的那个：
+
+```json
+{ "action": "windows", "display": ":2" }
+{ "action": "shot",    "display": ":2" }
+{ "action": "click",   "display": ":2", "x": 300, "y": 200 }
+```
+
+实测：`:2` 上光标到 `(300,200)`，而 `:0` 仍是 `(1033,520)`——**不会碰到用户的桌面**。
+（实现上是线程局部，不改进程环境，否则并发的另一条请求会串到别的显示上去。）
+
+它同时把该请求的 Wayland 判定关掉：指定了独立的 X 显示，`grim` 就用不上了。
+
+**但 `display` 只改截图和输入的去向，改不了 AT-SPI 的来源。** 所以 `mark` 和 `display`
+同时用会返回 `markWarn`——控件坐标来自会话、底图来自另一个显示，画出来的框位置是错的。
+这不是 bug，是两个坐标系本来就不在一起。
+
+### 画布坐标系：`canvas`（Windows）
+
+Windows 没有通用的"文档坐标"接口，所以 `canvas` **不做换算**，只把已知的量摊开：
+
+```json
+{ "action": "canvas", "hwnd": 724516 }
+→ { "windowRect":   { "x":60, "y":40, "w":1089, "h":887 },
+    "viewportRect": { "x":67, "y":221, "w":1074, "h":662 },
+    "scroll":       { "vertical": 0, "horizontal": 0 } }
+```
+
+**要按绝对位置下笔就先 `home: true`**：滚到顶部之后视口左上角就是文档原点，窗口坐标和
+文档坐标只差一个固定偏移。
+
+```json
+{ "action": "canvas", "hwnd": 724516, "home": true }
+→ { "homed": { "reached": true, "steps": 2, "scroll": { "vertical": 0 } } }
+```
+
+画相对图形（拖拽、连笔）本来就不受影响，窗口坐标直接可用。
+
+### Linux 的 mark：为什么它曾经一直是空的
+
+**AT-SPI 在 root 下读不到。** 实测同一个脚本、同一套环境变量：
+
+```
+uid=1000   15/15 个应用有名字      ✓
+uid=0      进程直接崩，零输出
+```
+
+而 Linux agent 是以 root 跑的（它要写 `/dev/uinput`）。所以 a11y 查询现在交给一个
+**降到会话 uid 的子进程**，`ref` 也从"活的 Atspi 节点"改成了**定位串**（子节点索引路径），
+每次动作时在子进程里重新解析。
+
+实际用起来没有区别，还是 `mark` 拿编号、`click {ref}`：
+
+```json
+{ "action": "state", "mark": true, "limit": 20 }
+→ controls: [{ "n": 9, "ref": "e9", "text": "Firefox",
+               "x": 6, "y": 1010, "w": 64, "h": 70 }, ...]
+```
+
+**两个仍然存在的限制**：
+
+- **纯 Xlib 应用（xterm、xclock）在 AT-SPI 里完全不存在**。有几何、能截图、能点，
+  但拿不到控件层。要测 `mark`，那个显示上的应用得是 GTK/Qt 这类会注册 a11y 的。
+- **`pyatspi` 是废弃绑定，而且有毒**：它在这台机器上返回的全是死代理（名字空、
+  `childCount -1`），并且在模块顶层导入它会把同进程 `gi` 的连接一起搞坏。一律用
+  `gi.repository.Atspi`。
+
 
 ### 同一件事的两边写法
 
