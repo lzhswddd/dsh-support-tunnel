@@ -422,6 +422,31 @@ inline       查队列自身状态             → 连队列都不等
 `taskKind` 是分类，`lane` 是它到底排了队还是一路放行。**"排没排队"是可以问的，
 不用猜。**
 
+### 出问题时第一条命令：`doctor`
+
+`status` 报告 agent 自己在忙什么。`doctor` **主动去探**：真的走一遍 UIA/AT-SPI 树、
+真的读 DPI、真的截一张图看像素，然后每个能力给一个 verdict：
+
+```
+ok        能用
+broken    坏了，该修
+limited   平台或环境限制，不是故障
+na        这台机器上没这个概念
+```
+
+```json
+{ "action": "doctor" }
+→ { "summary": { "verdict": "broken", "broken": 1, "limited": 0, "ok": 6 },
+    "checks": [
+      { "check": "uia", "verdict": "ok", "detail": "UIA 枚举到 22 个顶层窗口" },
+      { "check": "dpi", "verdict": "ok", "detail": "DPI=120 缩放=125% 进程DPI感知=True 桌面=2560x1600" },
+      ...] }
+```
+
+**为什么要有它**：Windows 上最恶劣的故障是"每一步都报成功，但什么都没发生"——
+UI Automation 树死了，`Click`/`Type` 全绿，`Snapshot` 说"No windows found"。
+光看返回值永远查不出来。`doctor` 直接量一次，`uia` 报 `0 个窗口` 就是它。
+
 ### 看端侧现在在干什么
 
 ```
