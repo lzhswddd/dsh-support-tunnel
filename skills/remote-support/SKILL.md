@@ -502,6 +502,59 @@ Linux 上 agent 是 root，浏览器会**降权到会话用户**再起——root
 
 **但不要靠截图验证界面**——见故障表最后一行。
 
+### 截图覆盖的是什么：`coordinateSpace` / `origin` / `deliveredScale`
+
+每次 `shot` 都会带回这三个字段，说清楚"这张图里的一点怎么换成屏幕坐标"：
+
+```json
+{ "coordinateSpace": "window",         // window 或 screen
+  "origin":  { "x": 822, "y": 544 },   // 图的 (0,0) 对应哪个屏幕坐标
+  "deliveredScale": 1.0 }              // 图内像素 / 屏幕像素
+```
+
+换算：**屏幕坐标 = 图内坐标 / deliveredScale + origin**
+
+`shot` 有三种覆盖范围，靠 `screen` 选：
+
+```
+shot { }              → 前台窗口（默认），coordinateSpace: window
+shot { screen: 0 }    → 第 0 块显示器，2560x1600
+shot { screen: -1 }   → 整个虚拟桌面，多显示器全在
+```
+
+实测多屏机器上 `screen: -1` 是 `6400x2160`、`origin {0,-559}`——副屏在主屏上方时原点是负的，
+所以**不要假设 origin 是 (0,0)**。
+
+（`screen: -1` 以前没实现，会静默退回前台窗口，返回还看着完全正常。2026-11-26 修好了，
+agent `2026-11-23.72` 之前的老 agent 上别信这个参数。）
+
+### 让人能随时喊停：`pause` / `resume` / `indicator`
+
+远程支持里是**别人在你屏幕上动鼠标**，所以停了的能力不是可选项。
+
+```json
+{ "action": "pause", "reason": "客户在看" }   → paused: true
+{ "action": "click", "x": 100, "y": 100 }     → ok: false, paused: true,
+                                                 error: "用户已中止操作：客户在看"
+{ "action": "resume" }                        → paused: false
+```
+
+**只拦 UI 动作，读操作照常**——停了之后你还需要 `shot` / `windows` 看现场，把人彻底关在
+门外没有好处。
+
+中止标记写在磁盘上（Windows `%ProgramData%\FieldSupport\ui-hold.txt`，Linux
+`/run/fieldsupport-pause`），**重启 agent 也不会自己清**。哪天发现所有 UI 动作都被拒，
+先查这个文件在不在，别去查 agent。
+
+`indicator` 起一个置顶浮窗，显示当前动作和一个红色「停止操作」按钮：
+
+```json
+{ "action": "indicator", "mode": "start" }   // stop / status 也可以
+```
+
+它只读两个文件、不碰 agent 的端口，所以**agent 卡住时浮窗照样显示、照样能停**——而那正是
+用户最需要它的时候。
+
 ### 点准的唯一办法：mark + ref，不要估像素
 
 **永远不要从截图里读坐标。** 实测过：我看图估「画笔」按钮在 `(505,137)`，UIA 报的是
@@ -543,6 +596,18 @@ mask   黑底，每个控件填成一整块独立颜色，号码写在块中央
 ```json
 { "n": 27, "ref": "e27", "text": "画笔", "color": "#4880ff" }
 ```
+
+**ref 能用多久**：`find` / `state` 的返回里带 `refTtl`：
+
+```json
+"refTtl": { "limit": 400, "note": "ref 在控件消失之后失效；缓存到 400 条开始裁最旧的 1/4。" }
+```
+
+所以 ref 在两种情况下会没了：控件本身消失（窗口关了、树重建），或者你连着发了几十次
+`find`/`state` 把早期的挤掉了。**报"ref 过期"时重新 find 一次就行，不用换别的办法。**
+
+返回里的 `type` 两边一致，是字符串（`"button"` / `"text"` / `"window"`）；Windows 侧额外
+带 `controlType`（数字 id，需要精确判断时用）。
 
 ### 滚动和缩放：用 scroll，不要用 wheel 猜
 
@@ -1097,6 +1162,9 @@ Linux 的主路径始终是 **agent 的 exec / 文件 / 键鼠**，画面是附�
 | `cmd` 下中文变问号 | 输入侧的代码页问题，`chcp` 改不了同一行的参数 | 已改为直接拒绝；含中文就用 `shell: "powershell"` |
 | **截图看着不对** | 客户机可能有 RDP 会话占了某块屏；且 `windows` 的坐标和截图像素在 DPI 缩放下对不上 | **用 `windows` 枚举核对，别只信图** |
 
+| **UI 动作全被拒，error 是「用户已中止操作」** | `pause` 的标记还在（磁盘上的文件，重启 agent 不会清） | `action=resume`。查文件：Windows `%ProgramData%\FieldSupport\ui-hold.txt`、Linux `/run/fieldsupport-pause` |
+| **`shot {screen:-1}` 截出来只有一个窗口** | agent `2026-11-23.72` 之前 `screen` 参数根本没被读 | 升级 agent。新版 `screen:-1` 给整个虚拟桌面、`screen:0` 给单块显示器 |
+| **整屏截图只有左上角一块、尺寸比显示器小** | 抓图时不在 DPI 感知上下文里，拿到逻辑尺寸 | agent 已修（量和抓放在同一个上下文）。自己写抓图脚本要注意这条：**先量后抓，量和抓必须在同一个 DPI 上下文** |
 ## 远程更新客户端（不用人碰机器）
 
 ```
